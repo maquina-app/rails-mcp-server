@@ -137,10 +137,17 @@ After running the script, restart Claude Desktop to apply the changes.
 
 Claude Desktop launches the MCP server using your system's default Ruby environment, bypassing version manager initialization (e.g., rbenv, RVM). The MCP server needs to use the same Ruby version where it was installed, as MCP server startup failures can occur when using an incompatible Ruby version.
 
-If you are using a Ruby version manager such as rbenv, you can create a symbolic link to your Ruby shim to ensure the correct version is used:
+If you are using a Ruby version manager such as rbenv, you can use the Ruby shim path to ensure the correct version is used:
 
-```bash
-sudo ln -s /home/your_user/.rbenv/shims/ruby /usr/local/bin/ruby
+```json
+{
+  "mcpServers": {
+    "railsMcpServer": {
+      "command": "/home/your_user/.rbenv/shims/ruby",
+      "args": ["/full/path/to/rails-mcp-server/exe/rails-mcp-server"] 
+    }
+  }
+}
 ```
 
 Replace "/home/your_user/.rbenv/shims/ruby" with your actual path for the Ruby shim.
