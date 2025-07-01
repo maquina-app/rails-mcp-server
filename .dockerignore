@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Bundler
+.bundle
+vendor/bundle
+
+# Logs
+log/*
+*.log
+
+# Temp files
+tmp/
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test files
+test/
+spec/
+coverage/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development files
+.ruby-version
+.ruby-gemset
+.rspec
+
+# Local config (will be mounted as volume)
+config/rails-mcp/

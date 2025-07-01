@@ -2,3 +2,10 @@ pkg/**/*
 tmp/**/*
 .DS_Store
 bin/changelog_generator.rb
+
+# Kamal deployment
+.kamal/secrets
+.env*
+
+# Local config
+config/rails-mcp/

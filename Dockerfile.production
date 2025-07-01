@@ -1,0 +1,83 @@
+# Production-optimized Dockerfile for Kamal deployment
+# Uses multi-stage build for smaller image size
+
+# Build stage
+FROM ruby:3.2-slim AS builder
+
+# Install build dependencies
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency files
+COPY Gemfile Gemfile.lock rails-mcp-server.gemspec ./
+COPY lib/rails-mcp-server/version.rb ./lib/rails-mcp-server/
+
+# Install gems with production settings
+RUN bundle config set --local deployment 'true' && \
+    bundle config set --local without 'development test' && \
+    bundle install -j4 && \
+    bundle clean --force
+
+# Copy application code
+COPY . .
+
+# Remove unnecessary files
+RUN rm -rf test/ spec/ docs/ *.md .git* .docker* config/deploy.yml
+
+# Runtime stage
+FROM ruby:3.2-slim
+
+# Install runtime dependencies only
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for security
+RUN useradd -m -u 1000 mcp && \
+    mkdir -p /home/mcp/.config/rails-mcp/resources && \
+    chown -R mcp:mcp /home/mcp/.config
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder --chown=mcp:mcp /app /app
+COPY --from=builder --chown=mcp:mcp /usr/local/bundle /usr/local/bundle
+
+# Add health check endpoint support
+RUN echo '#!/usr/bin/env ruby\n\
+require "webrick"\n\
+server = WEBrick::HTTPServer.new(Port: 6030)\n\
+server.mount_proc("/health") { |req, res| res.body = "OK" }\n\
+trap("INT") { server.shutdown }\n\
+Thread.new { server.start }\n\
+exec(*ARGV)' > /app/healthcheck-wrapper && \
+    chmod +x /app/healthcheck-wrapper
+
+# Switch to non-root user
+USER mcp
+
+# Set environment
+ENV BUNDLE_PATH=/usr/local/bundle \
+    BUNDLE_BIN=/usr/local/bundle/bin \
+    GEM_HOME=/usr/local/bundle \
+    PATH="/usr/local/bundle/bin:${PATH}" \
+    RAILS_ENV=production \
+    RACK_ENV=production
+
+# Expose ports
+EXPOSE 6029 6030
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:6030/health || exit 1
+
+# Use wrapper script to provide health endpoint
+ENTRYPOINT ["/app/healthcheck-wrapper"]
+CMD ["bundle", "exec", "rails-mcp-server", "--mode", "http", "-p", "6029"]

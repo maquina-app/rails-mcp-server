@@ -1,0 +1,95 @@
+# Kamal deployment configuration for Rails MCP Server
+service: rails-mcp-server
+
+# Docker image name
+image: your-username/rails-mcp-server
+
+# Deployment servers
+servers:
+  web:
+    hosts:
+      - 192.168.1.100  # Replace with your server IP
+    options:
+      network: "bridge"
+    labels:
+      traefik.http.routers.rails-mcp.rule: Host(`mcp.yourdomain.com`)
+      traefik.http.routers.rails-mcp.entrypoints: websecure
+      traefik.http.routers.rails-mcp.tls: true
+      traefik.http.routers.rails-mcp.tls.certresolver: letsencrypt
+      traefik.http.services.rails-mcp.loadbalancer.server.port: 6029
+
+# Docker registry
+registry:
+  server: ghcr.io  # or docker.io, or your private registry
+  username: 
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Environment configuration
+env:
+  clear:
+    LOG_LEVEL: info
+    PORT: 6029
+  secret:
+    # Add any secrets here if needed
+    # - SECRET_KEY_BASE
+
+# Persistent storage for config and resources
+volumes:
+  - "/opt/rails-mcp/config:/root/.config/rails-mcp"
+  - "/home/deploy/rails-projects:/projects:ro"
+
+# Health check
+healthcheck:
+  path: /health
+  port: 6029
+  interval: 30s
+
+# Accessories (if you need a database or other services)
+accessories:
+  # Example: Redis for caching (if needed in future)
+  # redis:
+  #   image: redis:7-alpine
+  #   host: 192.168.1.100
+  #   port: 6379
+  #   volumes:
+  #     - /opt/rails-mcp/redis:/data
+
+# Traefik configuration for HTTPS
+traefik:
+  options:
+    publish:
+      - "443:443"
+    volume:
+      - "/opt/traefik/acme:/acme"
+  args:
+    api.dashboard: true
+    entryPoints.web.address: ":80"
+    entryPoints.websecure.address: ":443"
+    entryPoints.web.http.redirections.entryPoint.to: websecure
+    entryPoints.web.http.redirections.entryPoint.scheme: https
+    certificatesResolvers.letsencrypt.acme.email: "your-email@example.com"
+    certificatesResolvers.letsencrypt.acme.storage: "/acme/acme.json"
+    certificatesResolvers.letsencrypt.acme.httpChallenge.entryPoint: web
+
+# Builder configuration
+builder:
+  multiarch: false
+  dockerfile: Dockerfile.production
+  args:
+    RUBY_VERSION: 3.2
+
+# Boot configuration
+boot:
+  limit: 10 # Max number of parallel deployments
+  wait: 30 # Seconds to wait for health check
+
+# Stop configuration  
+stop:
+  wait: 30 # Seconds to wait for graceful shutdown
+
+# Retain configuration
+retain:
+  containers: 5
+  images: 3

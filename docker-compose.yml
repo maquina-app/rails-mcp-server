@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  rails-mcp-server:
+    build: .
+    container_name: rails-mcp-server
+    ports:
+      - "6029:6029"
+    environment:
+      - LOG_LEVEL=info
+    volumes:
+      # Mount config directory for projects.yml
+      - ./config/rails-mcp:/root/.config/rails-mcp
+      # Mount your Rails projects (adjust paths as needed)
+      - ~/projects:/projects:ro
+    restart: unless-stopped
+    command: bundle exec rails-mcp-server --mode http -p 6029 --log-level info
