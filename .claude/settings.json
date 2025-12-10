@@ -1,0 +1,27 @@
+{
+  "project": {
+    "name": "rails-mcp-server",
+    "type": "ruby-gem",
+    "language": "ruby",
+    "framework": null
+  },
+  "commands": {
+    "test": "bundle exec rake test",
+    "lint": "bundle exec standardrb",
+    "lint:fix": "bundle exec standardrb --fix",
+    "build": "gem build rails-mcp-server.gemspec",
+    "server": "bundle exec exe/rails-mcp-server",
+    "server:http": "bundle exec exe/rails-mcp-server --mode http",
+    "config": "bundle exec exe/rails-mcp-config"
+  },
+  "context": {
+    "always_include": [
+      "CLAUDE.md",
+      "README.md"
+    ],
+    "entry_points": [
+      "lib/rails_mcp_server.rb",
+      "exe/rails-mcp-server"
+    ]
+  }
+}

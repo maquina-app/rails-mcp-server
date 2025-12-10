@@ -1,3 +1,5 @@
+require "fast_mcp"
+
 module RailsMcpServer
   class BaseTool < FastMcp::Tool
     extend Forwardable
