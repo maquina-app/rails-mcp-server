@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2025-12-10
+
+### Fixed
+
+- **Setup Script Compatibility**: Fixed `rails-mcp-setup-claude` failing on readonly filesystems (thanks to @emptyflask)
+  - Only runs `chmod` when the file is not already executable
+  - Resolves issues on NixOS and similar platforms with readonly filesystems
+  - Fixes failures when the current user is not the owner of the executable
+
 ## [1.2.2] - 2025-07-21
 
 ### Added
@@ -192,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.2.3** (2025-12-10): Setup script fix for readonly filesystems (NixOS compatibility)
 - **v1.2.2** (2025-07-21): Network access support with --bind-all flag
 - **v1.2.1** (2025-06-09): Bug fixes for STDIO output and tool naming
 - **v1.2.0** (2025-06-03): Major documentation and resource system addition
@@ -214,9 +224,9 @@ This project follows [Semantic Versioning](https://semver.org/):
 1. Update version in `lib/rails-mcp-server/version.rb`
 2. Update this CHANGELOG.md with new features and changes
 3. Update README.md and documentation if needed
-4. Create a git tag: `git tag -a v1.2.2 -m "Release version 1.2.2"`
+4. Create a git tag: `git tag -a v1.2.3 -m "Release version 1.2.3"`
 5. Push tags: `git push origin --tags`
-6. Build and publish gem: `gem build rails-mcp-server.gemspec && gem push rails-mcp-server-1.2.2.gem`
+6. Build and publish gem: `gem build rails-mcp-server.gemspec && gem push rails-mcp-server-1.2.3.gem`
 
 ### Changelog Categories
 

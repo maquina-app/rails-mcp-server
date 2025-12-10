@@ -100,7 +100,7 @@ FileUtils.mkdir_p(claude_config_dir)
 server_path = File.join(project_dir, "exe", "rails-mcp-server")
 
 # Ensure the server is executable
-FileUtils.chmod("+x", server_path)
+FileUtils.chmod("+x", server_path) unless File.stat(server_path).executable?
 puts "✓".green + " Made server executable"
 
 # Create or update the Claude Desktop config file
