@@ -12,13 +12,14 @@ This Rails MCP Server implements the MCP specification to give AI models access 
 
 - Manage multiple Rails projects
 - Browse project files and structures
-- View Rails routes
-- Inspect model information and relationships
+- View Rails routes with filtering options
+- Inspect model information and relationships (with Prism static analysis)
 - Get database schema information
 - Analyze controller-view relationships
 - Analyze environment configurations
+- Execute sandboxed Ruby code for custom queries
 - Access comprehensive Rails, Turbo, Stimulus, and Kamal documentation
-- Follow the Model Context Protocol standard
+- Context-efficient architecture with progressive tool discovery
 - Seamless integration with LLM clients
 
 ## Installation
@@ -29,9 +30,40 @@ Install the gem:
 gem install rails-mcp-server
 ```
 
-After installation, the `rails-mcp-server` and `rails-mcp-setup-claude` executables will be available in your PATH.
+After installation, the following executables will be available in your PATH:
+
+- `rails-mcp-server` - The MCP server itself
+- `rails-mcp-config` - Interactive configuration tool (recommended)
+- `rails-mcp-setup-claude` - Legacy Claude Desktop setup script
+- `rails-mcp-server-download-resources` - Legacy resource download script
 
 ## Configuration
+
+### Using the Configuration Tool (Recommended)
+
+The easiest way to configure the Rails MCP Server is using the interactive configuration tool:
+
+```bash
+rails-mcp-config
+```
+
+This provides a user-friendly TUI (Terminal User Interface) for:
+
+- **Managing Projects**: Add, edit, remove, and validate Rails projects
+- **Downloading Guides**: Download Rails, Turbo, Stimulus, and Kamal documentation
+- **Importing Custom Guides**: Add your own markdown documentation
+- **Claude Desktop Integration**: Automatically configure Claude Desktop
+
+The tool uses [Gum](https://github.com/charmbracelet/gum) for an enhanced experience if installed, but works with a basic terminal fallback.
+
+```bash
+# Install Gum for best experience (optional)
+brew install gum        # macOS
+sudo apt install gum    # Debian/Ubuntu
+yay -S gum              # Arch Linux
+```
+
+### Manual Configuration
 
 The Rails MCP Server follows the XDG Base Directory Specification for configuration files:
 
@@ -40,7 +72,7 @@ The Rails MCP Server follows the XDG Base Directory Specification for configurat
 
 The server will automatically create these directories and an empty `projects.yml` file the first time it runs.
 
-To configure your projects:
+To configure your projects manually:
 
 1. Edit the `projects.yml` file in your config directory to include your Rails projects:
 
@@ -112,11 +144,27 @@ rails-mcp-server --log-level debug
 
 ## Claude Desktop Integration
 
-The Rails MCP Server can be used with Claude Desktop. There are two options to set this up:
+The Rails MCP Server can be used with Claude Desktop. There are multiple options to set this up:
 
-### Option 1: Use the setup script (recommended)
+### Option 1: Use the configuration tool (recommended)
 
-Run the setup script which will automatically configure Claude Desktop and set up the proper XDG-compliant directory structure:
+Run the interactive configuration tool and select "Claude Desktop integration":
+
+```bash
+rails-mcp-config
+```
+
+The tool will:
+
+- Detect your current Claude Desktop configuration
+- Let you choose between STDIO or HTTP mode
+- Automatically find the correct Ruby and server paths
+- Create a backup before making changes
+- Update the Claude Desktop configuration
+
+### Option 2: Use the setup script (legacy)
+
+Run the setup script which will automatically configure Claude Desktop:
 
 ```bash
 rails-mcp-setup-claude
@@ -130,7 +178,7 @@ The script will:
 
 After running the script, restart Claude Desktop to apply the changes.
 
-### Option 2: Direct Configuration
+### Option 3: Direct Configuration
 
 1. Create the appropriate config directory for your platform:
    - macOS: `$XDG_CONFIG_HOME/rails-mcp` or `~/.config/rails-mcp` if XDG_CONFIG_HOME is not set
@@ -176,6 +224,8 @@ If you are using a Ruby version manager such as rbenv, you can use the Ruby shim
 
 Replace "/home/your_user/.rbenv/shims/ruby" with your actual path for the Ruby shim.
 
+**Tip**: The `rails-mcp-config` tool automatically detects your Ruby path and uses the correct shim path when configuring Claude Desktop.
+
 ### Using an MCP Proxy (Advanced)
 
 Claude Desktop and many other LLM clients only support STDIO mode communication, but you might want to use the HTTP/SSE capabilities of the server. An MCP proxy can bridge this gap:
@@ -211,6 +261,8 @@ npx mcp-remote http://localhost:6029/mcp/sse
 
 This setup allows STDIO-only clients to communicate with the Rails MCP Server through the proxy, benefiting from the HTTP/SSE capabilities while maintaining client compatibility.
 
+**Tip**: The `rails-mcp-config` tool can configure HTTP mode with mcp-remote automatically.
+
 ## How the Server Works
 
 The Rails MCP Server implements the Model Context Protocol using either:
@@ -220,240 +272,175 @@ The Rails MCP Server implements the Model Context Protocol using either:
 
 Each request includes a sequence number to match requests with responses, as defined in the MCP specification. The server maintains project context and provides Rails-specific analysis capabilities across multiple codebases.
 
+### Context-Efficient Architecture
+
+The server uses a progressive tool discovery architecture to minimize context usage. Instead of exposing all tools upfront, it provides 4 bootstrap tools that allow LLMs to discover and invoke additional analyzers on-demand:
+
+- **`switch_project`** - Select the active Rails project
+- **`search_tools`** - Discover available tools by category or keyword
+- **`execute_tool`** - Invoke internal analyzers with parameters
+- **`execute_ruby`** - Run sandboxed Ruby code for custom queries
+
+This design reduces initial context from ~2,400 tokens to ~800 tokens while maintaining full functionality.
+
+## AI Agent Guide
+
+For AI agents (Claude, GPT, etc.) using this server, see the comprehensive **[AI Agent Guide](docs/AGENT.md)** which covers:
+
+- Quick start workflow
+- Tool selection guide for common tasks
+- Helper methods available in `execute_ruby`
+- Common pitfalls and how to avoid them
+- Error handling and fallback strategies
+- Integration with other MCP servers (e.g., Neovim MCP)
+
 ## Available Tools
 
-The server provides the following tools for interacting with Rails projects:
+The server provides 4 registered tools plus internal analyzers accessible via `execute_tool`.
 
-### 1. `switch_project`
+### Registered Tools
 
-**Description:** Change the active Rails project to interact with a different codebase. Must be called before using other tools. Available projects are defined in the projects.yml configuration file.
+#### 1. `switch_project`
 
-**Parameters:**
-
-- `project_name`: (String, required) Name of the project as defined in the projects.yml file (case-sensitive)
-
-#### Examples
-
-```
-Can you switch to the "store" project so we can explore it?
-```
-
-```
-I'd like to analyze my "blog" application. Please switch to that project first.
-```
-
-```
-Switch to the "ecommerce" project and give me a summary of the codebase.
-```
-
-### 2. `project_info`
-
-**Description:** Retrieve comprehensive information about the current Rails project, including Rails version, directory structure, API-only status, and overall project organization. Useful for initial project exploration and understanding the codebase structure.
-
-**Parameters:** None
-
-#### Examples
-
-```
-Now that we're in the blog project, can you give me an overview of the project structure and Rails version?
-```
-
-```
-Tell me about this Rails application. What version is it running and how is it organized?
-```
-
-```
-I'd like to understand the high-level architecture of this project. Can you provide the project information?
-```
-
-### 3. `list_files`
-
-**Description:** List files in the Rails project matching specific criteria. Use this to explore project directories or locate specific file types. If no parameters are provided, lists files in the project root.
+**Description:** Change the active Rails project. Must be called before using other tools.
 
 **Parameters:**
 
-- `directory`: (String, optional) Directory path relative to the project root (e.g., 'app/models', 'config'). Leave empty to list files at the root.
-- `pattern`: (String, optional) File pattern using glob syntax (e.g., '*.rb' for Ruby files, '*.erb' for ERB templates, '*_controller.rb' for controllers)
+- `project_name`: (String, required) Name of the project as defined in projects.yml
 
-#### Examples
+After switching, you'll see a Quick Start guide with common commands.
 
-```
-Can you list all the model files in this project?
-```
+#### 2. `search_tools`
 
-```
-Show me all the controller files in the app/controllers directory.
-```
-
-```
-I need to see all the view templates in the users section. Can you list the files in app/views/users?
-```
-
-```
-List all the JavaScript files in the app/javascript directory.
-```
-
-### 4. `get_file`
-
-**Description:** Retrieve the complete content of a specific file with syntax highlighting. Use this to examine implementation details, configurations, or any text file in the project.
+**Description:** Discover available tools by category or keyword.
 
 **Parameters:**
 
-- `path`: (String, required) File path relative to the project root (e.g., 'app/models/user.rb', 'config/routes.rb'). Use list_files first if you're not sure about the exact path.
+- `query`: (String, optional) Search term (e.g., 'routes', 'model', 'schema')
+- `category`: (String, optional) Filter by category: models, database, routing, controllers, files, project, guides
+- `detail_level`: (String, optional) Output detail: 'names', 'summary', or 'full' (default: 'summary')
 
-#### Examples
+#### 3. `execute_tool`
 
-```
-Can you show me the content of the User model file?
-```
-
-```
-I need to see what's in app/controllers/products_controller.rb. Can you retrieve that file?
-```
-
-```
-Please show me the application.rb file so I can check the configuration settings.
-```
-
-```
-I'd like to examine the routes file. Can you display the content of config/routes.rb?
-```
-
-### 5. `get_routes`
-
-**Description:** Retrieve all HTTP routes defined in the Rails application with their associated controllers and actions. Equivalent to running 'rails routes' command. This helps understand the API endpoints or page URLs available in the application.
-
-**Parameters:** None
-
-#### Examples
-
-```
-Can you show me all the routes defined in this application?
-```
-
-```
-I need to understand the API endpoints available in this project. Can you list the routes?
-```
-
-```
-Show me the routing configuration for this Rails app so I can see how the URLs are structured.
-```
-
-### 6. `analyze_models`
-
-**Description:** Retrieve detailed information about Active Record models in the project. When called without parameters, lists all model files. When a specific model is specified, returns its schema, associations (has_many, belongs_to, has_one), and complete source code.
+**Description:** Invoke internal analyzers by name.
 
 **Parameters:**
 
-- `model_name`: (String, optional) Class name of a specific model to get detailed information for (e.g., 'User', 'Product'). Use CamelCase, not snake_case. If omitted, returns a list of all models.
+- `tool_name`: (String, required) Name of the analyzer (e.g., 'get_routes', 'analyze_models')
+- `params`: (Hash, optional) Parameters for the analyzer
 
-#### Examples
+#### 4. `execute_ruby`
 
-```
-Can you list all the models in this Rails project?
-```
-
-```
-I'd like to understand the User model in detail. Can you show me its schema, associations, and code?
-```
-
-```
-Show me the Product model's definition, including its relationships with other models.
-```
-
-```
-What are all the models in this application, and can you then show me details for the Order model specifically?
-```
-
-### 7. `get_schema`
-
-**Description:** Retrieve database schema information for the Rails application. Without parameters, returns all tables and the complete schema.rb. With a table name, returns detailed column information including data types, constraints, and foreign keys for that specific table.
+**Description:** Execute sandboxed Ruby code in the Rails project context.
 
 **Parameters:**
 
-- `table_name`: (String, optional) Database table name to get detailed schema information for (e.g., 'users', 'products'). Use snake_case, plural form. If omitted, returns complete database schema.
+- `code`: (String, required) Ruby code to execute
+- `timeout`: (Integer, optional) Timeout in seconds (default: 30, max: 60)
 
-#### Examples
+**Available helper methods:**
+
+- `read_file(path)` - Read a file safely
+- `file_exists?(path)` - Check if a file exists
+- `list_files(pattern)` - Glob files (e.g., `'app/models/**/*.rb'`)
+- `project_root` - Get the project root path
+
+**Note:** Use `puts` to see output from your code.
+
+**Security:** The sandbox prevents file writes, system calls, network access, and reading sensitive files (.env, credentials, etc.).
+
+### Internal Analyzers (via execute_tool)
+
+#### `project_info`
+
+Retrieve comprehensive project information including Rails version, directory structure, and organization.
 
 ```
-Can you show me the complete database schema for this Rails application?
+execute_tool(tool_name: "project_info")
 ```
 
-```
-I'd like to see the structure of the users table. Can you retrieve that schema information?
-```
+#### `list_files`
+
+List files matching a pattern in a directory.
 
 ```
-Show me the columns and their data types in the products table.
+execute_tool(tool_name: "list_files", params: { directory: "app/models", pattern: "*.rb" })
 ```
 
+#### `get_file`
+
+Retrieve the content of a specific file.
+
 ```
-I need to understand the database design. Can you first list all tables and then show me details for the orders table?
+execute_tool(tool_name: "get_file", params: { path: "app/models/user.rb" })
 ```
 
-### 8. `analyze_controller_views`
+#### `get_routes`
 
-**Description:** Analyze the relationships between controllers, their actions, and corresponding views to understand the application's UI flow.
+Retrieve Rails routes with optional filtering.
+
+```
+execute_tool(tool_name: "get_routes")
+execute_tool(tool_name: "get_routes", params: { controller: "users" })
+execute_tool(tool_name: "get_routes", params: { verb: "POST" })
+execute_tool(tool_name: "get_routes", params: { path_contains: "api" })
+```
+
+#### `analyze_models`
+
+Analyze Active Record models with associations, validations, and optional Prism static analysis.
+
+```
+execute_tool(tool_name: "analyze_models")
+execute_tool(tool_name: "analyze_models", params: { model_name: "User" })
+execute_tool(tool_name: "analyze_models", params: { model_name: "User", analysis_type: "full" })
+execute_tool(tool_name: "analyze_models", params: { detail_level: "names" })
+```
 
 **Parameters:**
 
-- `controller_name`: (String, optional) Name of a specific controller to analyze (e.g., 'UsersController' or 'users'). If omitted, all controllers will be analyzed.
+- `model_name`: Specific model to analyze
+- `model_names`: Array of models to analyze
+- `detail_level`: 'names', 'summary', or 'full'
+- `analysis_type`: 'introspection', 'static', or 'full' (includes Prism AST analysis)
 
-#### Examples
+#### `get_schema`
 
-```
-Can you analyze the Users controller and its views to help me understand the UI flow?
-```
-
-```
-Show me how the ProductsController connects to its views and what actions are available.
-```
+Retrieve database schema information.
 
 ```
-I want to understand the entire controller-view structure of this application.
+execute_tool(tool_name: "get_schema")
+execute_tool(tool_name: "get_schema", params: { table_name: "users" })
+execute_tool(tool_name: "get_schema", params: { detail_level: "tables" })
 ```
 
-### 9. `analyze_environment_config`
+#### `analyze_controller_views`
 
-**Description:** Analyze environment configurations to identify inconsistencies, security issues, and missing variables across environments.
-
-**Parameters:** None
-
-#### Examples
+Analyze controller-view relationships with optional Prism static analysis.
 
 ```
-Can you analyze the environment configurations to find any security issues or missing environment variables?
+execute_tool(tool_name: "analyze_controller_views")
+execute_tool(tool_name: "analyze_controller_views", params: { controller_name: "users" })
+execute_tool(tool_name: "analyze_controller_views", params: { controller_name: "users", analysis_type: "full" })
 ```
 
-```
-Check the configuration files for any inconsistencies between development and production environments.
-```
+#### `analyze_environment_config`
 
-### 10. `load_guide`
-
-**Description:** Load documentation guides from Rails, Turbo, Stimulus, Kamal, or Custom. Use this to get guide content for context in conversations.
-
-**Parameters:**
-
-- `guides`: (String, required) The guides library to search: 'rails', 'turbo', 'stimulus', 'kamal', or 'custom'
-- `guide`: (String, optional) Specific guide name to load. If not provided, returns available guides list.
-
-#### Examples
+Analyze environment configurations for inconsistencies and security issues.
 
 ```
-Can you load the Rails getting started guide?
+execute_tool(tool_name: "analyze_environment_config")
 ```
 
-```
-Show me the available Turbo guides and then load the one about Turbo Frames.
-```
+#### `load_guide`
+
+Load documentation guides from Rails, Turbo, Stimulus, Kamal, or Custom.
 
 ```
-I need help with Stimulus. Can you load the hello_stimulus guide?
-```
-
-```
-Load the Kamal installation guide so I can understand deployment options.
+execute_tool(tool_name: "load_guide", params: { guides: "rails" })
+execute_tool(tool_name: "load_guide", params: { guides: "rails", guide: "getting_started" })
+execute_tool(tool_name: "load_guide", params: { guides: "turbo" })
+execute_tool(tool_name: "load_guide", params: { guides: "stimulus" })
 ```
 
 ## Resources and Documentation
@@ -470,7 +457,15 @@ The Rails MCP Server provides access to comprehensive documentation through both
 
 ### Getting Started with Resources
 
-Before using resources, you need to download them:
+The easiest way to manage resources is using the configuration tool:
+
+```bash
+rails-mcp-config
+```
+
+Then select "Download guides" or "Import custom guides" from the menu.
+
+Alternatively, you can use the legacy command-line tools:
 
 ```bash
 # Download Rails guides
@@ -497,7 +492,7 @@ The easiest way to test and debug the Rails MCP Server is by using the MCP Inspe
 To use MCP Inspector with Rails MCP Server:
 
 ```bash
-# Install and run MCP Inspector with your Rails MCP Server
+# Install and run MCP Inspector
 npm -g install @modelcontextprotocol/inspector
 
 npx @modelcontextprotocol/inspector /path/to/rails-mcp-server
@@ -511,12 +506,19 @@ This will:
 
 In the MCP Inspector UI, you can:
 
-- See all available tools
+- See all available tools (you should see 4 registered tools)
 - Execute tool calls interactively
 - View request and response details
 - Debug issues in real-time
 
 The Inspector UI provides an intuitive interface to interact with your MCP server, making it easy to test and debug your Rails MCP Server implementation.
+
+### Testing Workflow
+
+1. **Switch to a project:** `switch_project` with your project name
+2. **Discover tools:** `search_tools` to see available analyzers
+3. **Test analyzers:** `execute_tool` to invoke specific analyzers
+4. **Test Ruby execution:** `execute_ruby` with code like `puts read_file('Gemfile')`
 
 ## Integration with LLM Clients
 

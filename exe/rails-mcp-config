@@ -1,0 +1,1411 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "yaml"
+require "json"
+require "fileutils"
+
+# Rails MCP Server - Project Configuration Tool
+# Uses Gum (https://github.com/charmbracelet/gum) for nice TUI with fallback
+
+module RailsMcpConfig
+  SEPARATOR = "─" * 20
+
+  # Catppuccin Mocha color palette
+  module Colors
+    # True color escape sequences (24-bit)
+    def self.rgb(r, g, b, text)
+      "\e[38;2;#{r};#{g};#{b}m#{text}\e[0m"
+    end
+
+    # Catppuccin Mocha palette
+    def self.green(text)    = rgb(166, 227, 161, text)  # #a6e3a1
+    def self.red(text)      = rgb(243, 139, 168, text)  # #f38ba8
+    def self.yellow(text)   = rgb(249, 226, 175, text)  # #f9e2af
+    def self.blue(text)     = rgb(137, 180, 250, text)  # #89b4fa
+    def self.mauve(text)    = rgb(203, 166, 247, text)  # #cba6f7
+    def self.teal(text)     = rgb(148, 226, 213, text)  # #94e2d5
+    def self.peach(text)    = rgb(250, 179, 135, text)  # #fab387
+    def self.pink(text)     = rgb(245, 194, 231, text)  # #f5c2e7
+    def self.sky(text)      = rgb(137, 220, 235, text)  # #89dceb
+    def self.lavender(text) = rgb(180, 190, 254, text)  # #b4befe
+    def self.text(text)     = rgb(205, 214, 244, text)  # #cdd6f4
+    def self.subtext(text)  = rgb(166, 173, 200, text)  # #a6adc8
+    def self.overlay(text)  = rgb(108, 112, 134, text)  # #6c7086
+
+    # Semantic aliases
+    def self.success(text)  = green(text)
+    def self.error(text)    = red(text)
+    def self.warning(text)  = yellow(text)
+    def self.info(text)     = sky(text)
+    def self.accent(text)   = mauve(text)
+    def self.bold(text)     = "\e[1m#{text}\e[0m"
+    def self.dim(text)      = overlay(text)
+
+    # Gum hex colors (without #)
+    GUM_GREEN    = "a6e3a1"
+    GUM_RED      = "f38ba8"
+    GUM_YELLOW   = "f9e2af"
+    GUM_BLUE     = "89b4fa"
+    GUM_MAUVE    = "cba6f7"
+    GUM_TEAL     = "94e2d5"
+    GUM_PEACH    = "fab387"
+    GUM_PINK     = "f5c2e7"
+    GUM_SKY      = "89dceb"
+    GUM_LAVENDER = "b4befe"
+    GUM_TEXT     = "cdd6f4"
+    GUM_SUBTEXT  = "a6adc8"
+    GUM_OVERLAY  = "6c7086"
+    GUM_BASE     = "1e1e2e"
+  end
+
+  # Gum wrapper with fallback to basic terminal
+  class UI
+    def initialize
+      @gum_available = system("which gum > /dev/null 2>&1")
+    end
+
+    def gum_available?
+      @gum_available
+    end
+
+    def header(text)
+      if gum_available?
+        system("gum style --border rounded --padding '0 2' --border-foreground '##{Colors::GUM_PINK}' --foreground '##{Colors::GUM_TEXT}' '#{text}'")
+      else
+        puts
+        puts Colors.pink("╭" + "─" * (text.length + 4) + "╮")
+        puts Colors.pink("│  #{Colors.bold(text)}  │")
+        puts Colors.pink("╰" + "─" * (text.length + 4) + "╯")
+        puts
+      end
+    end
+
+    def success(text)
+      if gum_available?
+        system("gum style --foreground '##{Colors::GUM_GREEN}' '✓ #{text}'")
+      else
+        puts Colors.green("✓ #{text}")
+      end
+    end
+
+    def error(text)
+      if gum_available?
+        system("gum style --foreground '##{Colors::GUM_RED}' '✗ #{text}'")
+      else
+        puts Colors.red("✗ #{text}")
+      end
+    end
+
+    def warning(text)
+      if gum_available?
+        system("gum style --foreground '##{Colors::GUM_YELLOW}' '! #{text}'")
+      else
+        puts Colors.yellow("! #{text}")
+      end
+    end
+
+    def info(text)
+      if gum_available?
+        system("gum style --foreground '##{Colors::GUM_SKY}' '#{text}'")
+      else
+        puts Colors.sky(text)
+      end
+    end
+
+    def separator?(option)
+      option.start_with?("─")
+    end
+
+    def choose(prompt, options, allow_cancel: true)
+      return nil if options.empty?
+
+      options = options + ["Cancel"] if allow_cancel
+
+      if gum_available?
+        result = `gum choose --header "#{prompt}" \
+          --header.foreground "##{Colors::GUM_MAUVE}" \
+          --cursor.foreground "##{Colors::GUM_PINK}" \
+          --item.foreground "##{Colors::GUM_TEXT}" \
+          #{options.map { |o| "'#{o}'" }.join(" ")}`.strip
+        return nil if result.empty? || result == "Cancel" || separator?(result)
+        result
+      else
+        puts
+        puts Colors.mauve(Colors.bold(prompt))
+        selectable_index = 0
+        index_map = {}
+
+        options.each do |opt|
+          if separator?(opt)
+            puts Colors.dim("     #{opt}")
+          else
+            selectable_index += 1
+            index_map[selectable_index] = opt
+            puts "  #{Colors.mauve(selectable_index.to_s)}. #{Colors.text(opt)}"
+          end
+        end
+
+        print Colors.dim("Enter choice (1-#{selectable_index}): ")
+
+        choice = gets&.strip&.to_i
+        return nil if choice.nil? || choice < 1 || choice > selectable_index
+
+        selected = index_map[choice]
+        return nil if selected == "Cancel"
+
+        selected
+      end
+    end
+
+    def multi_select(prompt, options)
+      return [] if options.empty?
+
+      if gum_available?
+        result = `gum choose --no-limit --header "#{prompt}" \
+          --header.foreground "##{Colors::GUM_MAUVE}" \
+          --cursor.foreground "##{Colors::GUM_PINK}" \
+          --item.foreground "##{Colors::GUM_TEXT}" \
+          --selected.foreground "##{Colors::GUM_GREEN}" \
+          #{options.map { |o| "'#{o}'" }.join(" ")}`.strip
+        result.split("\n").map(&:strip).reject(&:empty?)
+      else
+        puts
+        puts Colors.mauve(Colors.bold(prompt))
+        puts Colors.dim("(Enter numbers separated by spaces, or 'all')")
+        options.each_with_index do |opt, i|
+          puts "  #{Colors.mauve((i + 1).to_s)}. #{Colors.text(opt)}"
+        end
+        print Colors.dim("Selection: ")
+
+        input = gets&.strip&.downcase
+        return [] if input.nil? || input.empty?
+        return options.dup if input == "all"
+
+        indices = input.split(/[\s,]+/).map(&:to_i)
+        indices.select { |i| i >= 1 && i <= options.length }.map { |i| options[i - 1] }
+      end
+    end
+
+    def input(prompt, placeholder: "", default_value: "")
+      if gum_available?
+        cmd = ["gum", "input",
+          "--header", prompt,
+          "--header.foreground", "##{Colors::GUM_MAUVE}",
+          "--cursor.foreground", "##{Colors::GUM_PINK}",
+          "--placeholder", placeholder]
+        cmd += ["--value", default_value] unless default_value.empty?
+        result = `#{cmd.shelljoin}`.strip
+        result.empty? ? nil : result
+      else
+        print Colors.mauve(Colors.bold("#{prompt} "))
+        print Colors.dim("[#{default_value}] ") unless default_value.empty?
+        result = gets&.strip
+        return default_value if result&.empty? && !default_value.empty?
+        result&.empty? ? nil : result
+      end
+    end
+
+    def file_picker(prompt, directory: Dir.pwd)
+      if gum_available?
+        result = `gum file "#{directory}" --cursor.foreground "##{Colors::GUM_PINK}"`.strip
+        result.empty? ? nil : result
+      else
+        puts Colors.dim("(Enter path manually)")
+        input(prompt, placeholder: directory)
+      end
+    end
+
+    def confirm(prompt, default: false)
+      if gum_available?
+        default_flag = default ? "--default=true" : "--default=false"
+        system("gum confirm #{default_flag} \
+          --prompt.foreground '##{Colors::GUM_MAUVE}' \
+          --selected.background '##{Colors::GUM_PINK}' \
+          --selected.foreground '##{Colors::GUM_BASE}' \
+          '#{prompt}'")
+      else
+        default_hint = default ? "[Y/n]" : "[y/N]"
+        print "#{Colors.mauve(prompt)} #{Colors.dim(default_hint)} "
+        answer = gets&.strip&.downcase
+        return default if answer.nil? || answer.empty?
+        answer == "y" || answer == "yes"
+      end
+    end
+
+    def table(headers, rows, max_widths: nil)
+      return if rows.empty?
+
+      if gum_available?
+        # Build TSV for gum table
+        tsv = ([headers] + rows).map { |row| row.join("\t") }.join("\n")
+        system("echo '#{tsv}' | gum table --border rounded \
+          --border.foreground '##{Colors::GUM_OVERLAY}' \
+          --header.foreground '##{Colors::GUM_LAVENDER}'")
+      else
+        # Calculate column widths
+        all_rows = [headers] + rows
+        widths = headers.map.with_index do |_, i|
+          calculated = all_rows.map { |row| row[i].to_s.length }.max
+          max_widths && max_widths[i] ? [calculated, max_widths[i]].min : calculated
+        end
+
+        # Print header
+        puts
+        header_line = headers.map.with_index { |h, i| h.to_s.ljust(widths[i]) }.join("  │  ")
+        puts Colors.bold(Colors.lavender(header_line))
+        puts Colors.overlay("─" * header_line.length)
+
+        # Print rows (truncate if needed)
+        rows.each do |row|
+          cells = row.map.with_index do |cell, i|
+            cell_str = cell.to_s
+            if cell_str.length > widths[i]
+              cell_str[0, widths[i] - 1] + "…"
+            else
+              cell_str.ljust(widths[i])
+            end
+          end
+          puts Colors.text(cells.join("  │  "))
+        end
+        puts
+      end
+    end
+
+    def pager(content, title: nil)
+      if gum_available?
+        # Pipe content directly to gum pager (no border flags - not supported)
+        IO.popen(["gum", "pager", "--soft-wrap"], "w") do |io|
+          io.write(content)
+        end
+      else
+        puts Colors.mauve(Colors.bold(title)) if title
+        puts Colors.overlay("─" * 40)
+        puts content
+        puts Colors.overlay("─" * 40)
+      end
+    end
+
+    def spin(title)
+      frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+      stop_spinner = false
+      result = nil
+
+      spinner_thread = Thread.new do
+        i = 0
+        while !stop_spinner
+          print "\r#{Colors.pink(frames[i % frames.length])} #{Colors.text(title)}"
+          $stdout.flush
+          sleep 0.08
+          i += 1
+        end
+      end
+
+      begin
+        result = yield
+      ensure
+        stop_spinner = true
+        spinner_thread.join
+        print "\r\e[K"  # Clear line
+      end
+
+      result
+    end
+
+    def clear
+      system("clear") || system("cls")
+    end
+  end
+
+  # Project configuration manager
+  class ProjectManager
+    attr_reader :ui, :config_path, :config_dir, :projects
+
+    def initialize
+      @ui = UI.new
+      @config_dir = determine_config_dir
+      @config_path = File.join(@config_dir, "projects.yml")
+      @projects = load_projects
+    end
+
+    def run
+      loop do
+        ui.clear
+        ui.header("Rails MCP Server - Configuration")
+
+        if ui.gum_available?
+          ui.info("Using Gum for enhanced UI")
+        else
+          ui.warning("Gum not found. Install from: https://github.com/charmbracelet/gum")
+          ui.info("Using basic terminal UI")
+        end
+
+        puts
+        ui.info("Config: #{config_path}")
+        puts
+
+        # Build menu options - Projects first (daily use focus)
+        menu_options = [
+          "List projects",
+          "Add project"
+        ]
+
+        # Add "Add current directory" option if not already configured
+        if can_add_current_directory?
+          menu_options << "Add current directory (#{current_directory_name})"
+        end
+
+        menu_options += [
+          "Edit project",
+          "Remove project",
+          "Validate all projects",
+          SEPARATOR,
+          "Download guides",
+          "Import custom guides",
+          "Manage custom guides",
+          SEPARATOR,
+          "Claude Desktop integration",
+          "Open config file",
+          SEPARATOR,
+          "Exit"
+        ]
+
+        action = ui.choose("Select an action:", menu_options, allow_cancel: false)
+
+        case action
+        when /List/
+          list_projects
+        when /Add current/
+          add_current_directory
+        when /Add/
+          add_project
+        when /Edit/
+          edit_project
+        when /Remove/
+          remove_project
+        when /Validate/
+          validate_projects
+        when /Download guides/
+          download_guides
+        when /Import custom/
+          import_custom_guides
+        when /Manage custom/
+          manage_custom_guides
+        when /Claude Desktop/
+          claude_desktop_integration
+        when /Open/
+          open_config
+        when /Exit/, nil
+          ui.success("Goodbye!")
+          break
+        end
+
+        unless action&.match?(/Exit/)
+          puts
+          print Colors.dim("Press Enter to continue...")
+          gets
+        end
+      end
+    end
+
+    private
+
+    def determine_config_dir
+      config_dir = if RUBY_PLATFORM.match?(/mswin|mingw|cygwin/)
+        File.join(ENV["APPDATA"], "rails-mcp")
+      else
+        xdg = ENV["XDG_CONFIG_HOME"]
+        if xdg && !xdg.empty?
+          File.join(xdg, "rails-mcp")
+        else
+          File.join(Dir.home, ".config", "rails-mcp")
+        end
+      end
+
+      FileUtils.mkdir_p(config_dir)
+      config_dir
+    end
+
+    def load_projects
+      return {} unless File.exist?(config_path)
+
+      content = File.read(config_path)
+      YAML.safe_load(content) || {}
+    rescue Psych::SyntaxError => e
+      ui.error("Invalid YAML in projects.yml: #{e.message}")
+      {}
+    end
+
+    def save_projects
+      # Preserve comments if possible by rebuilding
+      content = "# Rails MCP Projects Configuration\n"
+      content += "# Format: project_name: /path/to/rails/project\n"
+      content += "# Managed by rails-mcp-config\n"
+      content += "\n"
+
+      projects.each do |name, path|
+        content += "#{name}: \"#{path}\"\n"
+      end
+
+      File.write(config_path, content)
+      @projects = load_projects
+      true
+    rescue => e
+      ui.error("Failed to save: #{e.message}")
+      false
+    end
+
+    def path_to_home_relative(path)
+      expanded = File.expand_path(path)
+      home = Dir.home
+
+      if expanded.start_with?(home)
+        expanded.sub(home, "~")
+      else
+        expanded
+      end
+    end
+
+    def current_directory_path
+      path_to_home_relative(Dir.pwd)
+    end
+
+    def current_directory_name
+      File.basename(Dir.pwd)
+    end
+
+    def current_directory_configured?
+      current_expanded = File.expand_path(Dir.pwd)
+      projects.values.any? { |path| File.expand_path(path) == current_expanded }
+    end
+
+    def can_add_current_directory?
+      return false if current_directory_configured?
+
+      # Check if it looks like a Rails project
+      gemfile = File.join(Dir.pwd, "Gemfile")
+      File.exist?(gemfile)
+    end
+
+    def list_projects
+      ui.clear
+      ui.header("Configured Projects")
+
+      if projects.empty?
+        ui.warning("No projects configured yet.")
+        ui.info("Use 'Add project' to configure your first Rails project.")
+        return
+      end
+
+      headers = ["Name", "Path", "Status"]
+      rows = projects.map do |name, path|
+        expanded = File.expand_path(path)
+        status = if File.directory?(expanded)
+          gemfile = File.join(expanded, "Gemfile")
+          File.exist?(gemfile) ? "✓ Valid" : "⚠ No Gemfile"
+        else
+          "✗ Not found"
+        end
+        [name, path, status]
+      end
+
+      ui.table(headers, rows)
+    end
+
+    def add_current_directory
+      ui.clear
+      ui.header("Add Current Directory")
+
+      path = current_directory_path
+      suggested_name = current_directory_name
+
+      ui.info("Directory: #{path}")
+      puts
+
+      # Get project name
+      name = ui.input("Project name:", placeholder: suggested_name, default_value: suggested_name)
+      return ui.warning("Cancelled.") if name.nil?
+
+      # Check if name exists
+      if projects.key?(name)
+        ui.error("Project '#{name}' already exists.")
+        return
+      end
+
+      # Validate name
+      unless name.match?(/\A[a-zA-Z0-9_-]+\z/)
+        ui.error("Invalid name. Use only letters, numbers, hyphens, and underscores.")
+        return
+      end
+
+      # Save
+      @projects[name] = path
+      if save_projects
+        ui.success("Added project '#{name}' -> #{path}")
+      end
+    end
+
+    def add_project
+      ui.clear
+      ui.header("Add New Project")
+
+      # Get project name
+      name = ui.input("Project name:", placeholder: "my-rails-app")
+      return ui.warning("Cancelled.") if name.nil?
+
+      # Check if exists
+      if projects.key?(name)
+        ui.error("Project '#{name}' already exists.")
+        return
+      end
+
+      # Validate name
+      unless name.match?(/\A[a-zA-Z0-9_-]+\z/)
+        ui.error("Invalid name. Use only letters, numbers, hyphens, and underscores.")
+        return
+      end
+
+      # Get path
+      puts
+      ui.info("Select the Rails project directory:")
+      path = if ui.gum_available? && ui.confirm("Use file picker?", default: true)
+        ui.file_picker("Select directory:")
+      else
+        ui.input("Project path:", placeholder: "/path/to/rails/project")
+      end
+
+      return ui.warning("Cancelled.") if path.nil?
+
+      # Expand and validate path
+      expanded = File.expand_path(path)
+
+      unless File.directory?(expanded)
+        ui.error("Directory not found: #{expanded}")
+        return
+      end
+
+      gemfile = File.join(expanded, "Gemfile")
+      unless File.exist?(gemfile)
+        unless ui.confirm("No Gemfile found. Add anyway?", default: false)
+          return ui.warning("Cancelled.")
+        end
+      end
+
+      # Convert to home-relative path
+      path = path_to_home_relative(path)
+
+      # Save
+      @projects[name] = path
+      if save_projects
+        ui.success("Added project '#{name}' -> #{path}")
+      end
+    end
+
+    def edit_project
+      ui.clear
+      ui.header("Edit Project")
+
+      if projects.empty?
+        ui.warning("No projects to edit.")
+        return
+      end
+
+      name = ui.choose("Select project to edit:", projects.keys)
+      return ui.warning("Cancelled.") if name.nil?
+
+      current_path = projects[name]
+      ui.info("Current path: #{current_path}")
+      puts
+
+      # Edit name or path?
+      what = ui.choose("What to edit?", ["Name", "Path", "Both"])
+      return ui.warning("Cancelled.") if what.nil?
+
+      new_name = name
+      new_path = current_path
+
+      if what.match?(/Name|Both/)
+        new_name = ui.input("New name:", default_value: name)
+        return ui.warning("Cancelled.") if new_name.nil?
+
+        if new_name != name && projects.key?(new_name)
+          ui.error("Project '#{new_name}' already exists.")
+          return
+        end
+      end
+
+      if what.match?(/Path|Both/)
+        new_path = ui.input("New path:", default_value: current_path)
+        return ui.warning("Cancelled.") if new_path.nil?
+
+        expanded = File.expand_path(new_path)
+        unless File.directory?(expanded)
+          unless ui.confirm("Directory not found. Save anyway?", default: false)
+            return ui.warning("Cancelled.")
+          end
+        end
+
+        # Convert to home-relative path
+        new_path = path_to_home_relative(new_path)
+      end
+
+      # Apply changes
+      @projects.delete(name) if new_name != name
+      @projects[new_name] = new_path
+
+      if save_projects
+        ui.success("Updated project '#{new_name}'")
+      end
+    end
+
+    def remove_project
+      ui.clear
+      ui.header("Remove Project")
+
+      if projects.empty?
+        ui.warning("No projects to remove.")
+        return
+      end
+
+      name = ui.choose("Select project to remove:", projects.keys)
+      return ui.warning("Cancelled.") if name.nil?
+
+      ui.warning("This will remove '#{name}' from configuration.")
+      ui.info("Path: #{projects[name]}")
+      puts
+
+      return unless ui.confirm("Are you sure?", default: false)
+
+      @projects.delete(name)
+      if save_projects
+        ui.success("Removed project '#{name}'")
+      end
+    end
+
+    def guide_downloaded?(guide_name)
+      # Resources are stored in config_dir/resources/guide_name/
+      resource_dir = File.join(config_dir, "resources", guide_name)
+      return false unless Dir.exist?(resource_dir)
+
+      # Check if directory has any files
+      files = Dir.glob(File.join(resource_dir, "**", "*")).select { |f| File.file?(f) }
+      !files.empty?
+    end
+
+    def download_guides
+      ui.clear
+      ui.header("Download Guides")
+
+      # Try to load the resource downloader
+      begin
+        require_relative "../lib/rails-mcp-server/helpers/resource_downloader"
+      rescue LoadError
+        ui.error("Resource downloader not available.")
+        ui.info("Run from the gem installation directory or check your installation.")
+        return
+      end
+
+      available = RailsMcpServer::ResourceDownloader.available_resources(config_dir)
+
+      if available.empty?
+        ui.warning("No guide resources configured.")
+        ui.info("Check config/resources.yml in the gem directory.")
+        return
+      end
+
+      # Check download status for each guide
+      guide_status = available.map do |guide|
+        downloaded = guide_downloaded?(guide)
+        { name: guide, downloaded: downloaded }
+      end
+
+      # Build options with clear status
+      options = guide_status.map do |g|
+        status = g[:downloaded] ? "✓ downloaded" : "not downloaded"
+        "#{g[:name]} (#{status})"
+      end
+
+      ui.info("Select guides to download:")
+      puts
+
+      selected = ui.multi_select("Available guides:", options)
+
+      if selected.empty?
+        ui.warning("No guides selected.")
+        return
+      end
+
+      # Extract guide names (first word before space)
+      guide_names = selected.map { |opt| opt.split(" ").first }
+
+      # Always ask about force download
+      puts
+      force = ui.confirm("Force re-download (overwrite existing)?", default: false)
+
+      puts
+      total_results = { downloaded: 0, skipped: 0, failed: 0 }
+
+      guide_names.each do |guide|
+        puts Colors.sky("Downloading #{guide}...")
+
+        results = ui.spin("  Fetching files...") do
+          begin
+            downloader = RailsMcpServer::ResourceDownloader.new(
+              guide,
+              config_dir: config_dir,
+              force: force,
+              verbose: false
+            )
+            downloader.download
+          rescue => e
+            { downloaded: 0, skipped: 0, failed: 1, error: e.message }
+          end
+        end
+
+        if results[:error]
+          ui.error("  #{results[:error]}")
+        elsif results[:failed] > 0
+          ui.error("  Failed: #{results[:failed]} files")
+        else
+          ui.success("  #{results[:downloaded]} downloaded, #{results[:skipped]} skipped")
+        end
+
+        total_results[:downloaded] += results[:downloaded]
+        total_results[:skipped] += results[:skipped]
+        total_results[:failed] += results[:failed]
+      end
+
+      puts
+      ui.info("Total: #{total_results[:downloaded]} downloaded, #{total_results[:skipped]} skipped, #{total_results[:failed]} failed")
+    end
+
+    def import_custom_guides
+      ui.clear
+      ui.header("Import Custom Guides")
+
+      # Try to load the resource importer
+      begin
+        require_relative "../lib/rails-mcp-server/helpers/resource_importer"
+      rescue LoadError
+        ui.error("Resource importer not available.")
+        ui.info("Run from the gem installation directory or check your installation.")
+        return
+      end
+
+      ui.info("Import markdown files as custom guides.")
+      ui.info("Files will be available via the load_guide tool.")
+      ui.info("Starting from: #{Dir.pwd}")
+      puts
+
+      # Get path - start from current directory
+      path = if ui.gum_available? && ui.confirm("Use file picker?", default: true)
+        ui.file_picker("Select file or directory:", directory: Dir.pwd)
+      else
+        ui.input("Path to file or directory:", placeholder: "./")
+      end
+
+      return ui.warning("Cancelled.") if path.nil?
+
+      expanded = File.expand_path(path)
+      unless File.exist?(expanded)
+        ui.error("Path not found: #{expanded}")
+        return
+      end
+
+      force = ui.confirm("Overwrite existing files?", default: false)
+
+      puts
+      puts Colors.sky("Importing from #{File.basename(path)}...")
+
+      results = ui.spin("  Processing files...") do
+        begin
+          importer = RailsMcpServer::ResourceImporter.new(
+            "custom",
+            config_dir: config_dir,
+            source_path: expanded,
+            force: force,
+            verbose: false
+          )
+          importer.import
+        rescue => e
+          { imported: 0, skipped: 0, failed: 1, error: e.message }
+        end
+      end
+
+      if results[:error]
+        ui.error("  #{results[:error]}")
+      elsif results[:failed] > 0
+        ui.error("  Import completed with errors")
+        ui.info("  Imported: #{results[:imported]}, Skipped: #{results[:skipped]}, Failed: #{results[:failed]}")
+      else
+        ui.success("  #{results[:imported]} imported, #{results[:skipped]} skipped")
+      end
+    end
+
+    def get_custom_guides
+      custom_dir = File.join(config_dir, "resources", "custom")
+      return [] unless Dir.exist?(custom_dir)
+
+      # Get all markdown files in custom directory
+      files = Dir.glob(File.join(custom_dir, "*.md"))
+      files.map do |file|
+        name = File.basename(file, ".md")
+        size = File.size(file)
+        mtime = File.mtime(file)
+        { name: name, path: file, size: size, mtime: mtime }
+      end.sort_by { |f| f[:name] }
+    end
+
+    def format_size(bytes)
+      if bytes < 1024
+        "#{bytes} B"
+      elsif bytes < 1024 * 1024
+        "#{(bytes / 1024.0).round(1)} KB"
+      else
+        "#{(bytes / 1024.0 / 1024.0).round(1)} MB"
+      end
+    end
+
+    def manage_custom_guides
+      ui.clear
+      ui.header("Manage Custom Guides")
+
+      custom_guides = get_custom_guides
+
+      if custom_guides.empty?
+        ui.warning("No custom guides found.")
+        ui.info("Use 'Import custom guides' to add your own markdown files.")
+        return
+      end
+
+      # Display location
+      custom_dir = File.join(config_dir, "resources", "custom")
+      ui.info("Location: #{custom_dir}")
+      puts
+
+      # Display table with max widths to prevent overflow
+      headers = ["Name", "Size", "Modified"]
+      rows = custom_guides.map do |g|
+        [g[:name], format_size(g[:size]), g[:mtime].strftime("%Y-%m-%d %H:%M")]
+      end
+
+      # Use max widths for fallback mode
+      ui.table(headers, rows, max_widths: [30, 10, 16])
+
+      ui.info("Total: #{custom_guides.length} guide(s)")
+      puts
+
+      # Ask what to do
+      action = ui.choose("What would you like to do?", ["Delete guides", "Back to menu"])
+      return if action.nil? || action.match?(/Back/)
+
+      # Multi-select guides to delete
+      options = custom_guides.map { |g| g[:name] }
+      selected = ui.multi_select("Select guides to delete:", options)
+
+      if selected.empty?
+        ui.warning("No guides selected.")
+        return
+      end
+
+      # Confirm deletion
+      puts
+      ui.warning("This will permanently delete #{selected.length} guide(s):")
+      selected.each { |name| puts Colors.text("  - #{name}") }
+      puts
+
+      return unless ui.confirm("Are you sure?", default: false)
+
+      # Delete selected guides
+      deleted = 0
+      failed = 0
+
+      selected.each do |name|
+        guide = custom_guides.find { |g| g[:name] == name }
+        next unless guide
+
+        begin
+          File.delete(guide[:path])
+          deleted += 1
+        rescue => e
+          ui.error("Failed to delete #{name}: #{e.message}")
+          failed += 1
+        end
+      end
+
+      # Update manifest if it exists
+      manifest_path = File.join(config_dir, "resources", "custom", "manifest.yaml")
+      if File.exist?(manifest_path)
+        begin
+          manifest = YAML.load_file(manifest_path)
+          if manifest && manifest["files"]
+            selected.each do |name|
+              manifest["files"].delete("#{name}.md")
+            end
+            manifest["updated_at"] = Time.now.to_s
+            File.write(manifest_path, manifest.to_yaml)
+          end
+        rescue => e
+          ui.warning("Could not update manifest: #{e.message}")
+        end
+      end
+
+      puts
+      if failed > 0
+        ui.warning("Deleted #{deleted} guide(s), #{failed} failed")
+      else
+        ui.success("Deleted #{deleted} guide(s)")
+      end
+    end
+
+    # Claude Desktop Integration
+    def claude_config_path
+      if RUBY_PLATFORM.match?(/mswin|mingw|cygwin/)
+        File.join(ENV["APPDATA"], "Claude", "claude_desktop_config.json")
+      elsif RUBY_PLATFORM.match?(/darwin/)
+        File.expand_path("~/Library/Application Support/Claude/claude_desktop_config.json")
+      else
+        # Linux - check common locations
+        xdg = ENV["XDG_CONFIG_HOME"] || File.expand_path("~/.config")
+        File.join(xdg, "Claude", "claude_desktop_config.json")
+      end
+    end
+
+    def load_claude_config
+      return nil unless File.exist?(claude_config_path)
+      JSON.parse(File.read(claude_config_path))
+    rescue JSON::ParserError => e
+      ui.error("Invalid JSON in Claude config: #{e.message}")
+      nil
+    end
+
+    def rails_mcp_server_path
+      # Find the rails-mcp-server executable
+      gem_exe = File.expand_path("../rails-mcp-server", __FILE__)
+      return gem_exe if File.exist?(gem_exe)
+
+      # Try to find via which
+      path = `which rails-mcp-server 2>/dev/null`.strip
+      return path unless path.empty?
+
+      nil
+    end
+
+    def ruby_executable_path
+      # Get full path to ruby
+      RbConfig.ruby
+    end
+
+    def npx_executable_path
+      `which npx 2>/dev/null`.strip.then { |p| p.empty? ? nil : p }
+    end
+
+    def generate_stdio_config
+      server_path = rails_mcp_server_path
+      ruby_path = ruby_executable_path
+
+      {
+        "command" => ruby_path,
+        "args" => [server_path]
+      }
+    end
+
+    def generate_http_config(url)
+      npx_path = npx_executable_path
+
+      {
+        "command" => npx_path,
+        "args" => ["mcp-remote", url]
+      }
+    end
+
+    def generate_example_config(mode, url = nil)
+      config = { "mcpServers" => {} }
+
+      if mode == :stdio
+        config["mcpServers"]["railsMcpServer"] = generate_stdio_config
+      else
+        config["mcpServers"]["railsMcpServer"] = generate_http_config(url || "http://localhost:3001/mcp")
+      end
+
+      config
+    end
+
+    def claude_desktop_integration
+      ui.clear
+      ui.header("Claude Desktop Integration")
+
+      config_file = claude_config_path
+      ui.info("Config file: #{config_file}")
+      puts
+
+      # Check if file exists
+      if File.exist?(config_file)
+        ui.success("Claude Desktop config file found")
+
+        config = load_claude_config
+        if config.nil?
+          ui.error("Could not parse config file")
+          return
+        end
+
+        # Check if railsMcpServer is configured
+        mcp_servers = config["mcpServers"] || {}
+        rails_config = mcp_servers["railsMcpServer"]
+
+        if rails_config
+          ui.success("Rails MCP Server is configured")
+          puts
+          puts Colors.lavender("Current configuration:")
+          puts Colors.text("  command: #{rails_config['command']}")
+          puts Colors.text("  args: #{rails_config['args']&.join(' ') || '(none)'}")
+        else
+          ui.warning("Rails MCP Server is NOT configured")
+        end
+
+        puts
+
+        # Menu options
+        options = ["View full config"]
+        options << (rails_config ? "Update Rails MCP Server config" : "Add Rails MCP Server config")
+        options << "Back to menu"
+
+        action = ui.choose("What would you like to do?", options, allow_cancel: false)
+
+        case action
+        when /View/
+          puts
+          ui.pager(JSON.pretty_generate(config))
+        when /Update|Add/
+          configure_rails_mcp_server(config)
+        end
+
+      else
+        ui.warning("Claude Desktop config file not found")
+        puts
+        ui.info("Claude Desktop stores its configuration at:")
+        puts Colors.text("  #{config_file}")
+        puts
+
+        action = ui.choose("What would you like to do?", [
+          "Create config file",
+          "Show example configuration",
+          "Back to menu"
+        ], allow_cancel: false)
+
+        case action
+        when /Create/
+          create_claude_config
+        when /Show example/
+          show_example_config
+        end
+      end
+    end
+
+    def configure_rails_mcp_server(config)
+      ui.clear
+      ui.header("Configure Rails MCP Server")
+
+      ui.info("Choose connection mode:")
+      puts
+      puts Colors.text("  STDIO  - Direct communication (recommended)")
+      puts Colors.text("           Requires: Ruby")
+      puts
+      puts Colors.text("  HTTP   - Network-based communication")
+      puts Colors.text("           Requires: Node.js and mcp-remote package")
+      puts
+
+      mode = ui.choose("Select mode:", ["STDIO (recommended)", "HTTP"])
+      return ui.warning("Cancelled.") if mode.nil?
+
+      if mode.match?(/STDIO/)
+        configure_stdio_mode(config)
+      else
+        configure_http_mode(config)
+      end
+    end
+
+    def configure_stdio_mode(config)
+      ruby_path = ruby_executable_path
+      server_path = rails_mcp_server_path
+
+      unless server_path
+        ui.error("Could not find rails-mcp-server executable")
+        ui.info("Make sure the gem is properly installed")
+        return
+      end
+
+      ui.info("Ruby executable: #{ruby_path}")
+      ui.info("Server executable: #{server_path}")
+      puts
+
+      return unless ui.confirm("Apply this configuration?", default: true)
+
+      # Backup existing config
+      backup_claude_config
+
+      # Update config
+      config["mcpServers"] ||= {}
+      config["mcpServers"]["railsMcpServer"] = generate_stdio_config
+
+      save_claude_config(config)
+    end
+
+    def configure_http_mode(config)
+      npx_path = npx_executable_path
+
+      unless npx_path
+        ui.error("npx not found. Please install Node.js first.")
+        puts
+        ui.info("After installing Node.js, install mcp-remote:")
+        puts Colors.text("  npm install -g mcp-remote")
+        return
+      end
+
+      ui.info("npx executable: #{npx_path}")
+      puts
+      ui.warning("Make sure mcp-remote is installed:")
+      puts Colors.text("  npm install -g mcp-remote")
+      puts
+
+      # Get server URL
+      default_url = "http://localhost:3001/mcp"
+      url = ui.input("Server URL:", placeholder: default_url, default_value: default_url)
+      return ui.warning("Cancelled.") if url.nil?
+
+      puts
+      ui.info("Configuration:")
+      puts Colors.text("  command: #{npx_path}")
+      puts Colors.text("  args: mcp-remote #{url}")
+      puts
+
+      return unless ui.confirm("Apply this configuration?", default: true)
+
+      # Backup existing config
+      backup_claude_config
+
+      # Update config
+      config["mcpServers"] ||= {}
+      config["mcpServers"]["railsMcpServer"] = generate_http_config(url)
+
+      save_claude_config(config)
+    end
+
+    def create_claude_config
+      ui.clear
+      ui.header("Create Claude Desktop Config")
+
+      mode = ui.choose("Select connection mode:", ["STDIO (recommended)", "HTTP"])
+      return ui.warning("Cancelled.") if mode.nil?
+
+      if mode.match?(/STDIO/)
+        ruby_path = ruby_executable_path
+        server_path = rails_mcp_server_path
+
+        unless server_path
+          ui.error("Could not find rails-mcp-server executable")
+          return
+        end
+
+        config = generate_example_config(:stdio)
+
+        ui.info("Will create config with:")
+        puts Colors.text("  command: #{ruby_path}")
+        puts Colors.text("  args: #{server_path}")
+
+      else
+        npx_path = npx_executable_path
+
+        unless npx_path
+          ui.error("npx not found. Please install Node.js first.")
+          return
+        end
+
+        default_url = "http://localhost:3001/mcp"
+        url = ui.input("Server URL:", placeholder: default_url, default_value: default_url)
+        return ui.warning("Cancelled.") if url.nil?
+
+        config = generate_example_config(:http, url)
+
+        ui.info("Will create config with:")
+        puts Colors.text("  command: #{npx_path}")
+        puts Colors.text("  args: mcp-remote #{url}")
+      end
+
+      puts
+      return unless ui.confirm("Create config file?", default: true)
+
+      # Create directory if needed
+      config_file = claude_config_path
+      FileUtils.mkdir_p(File.dirname(config_file))
+
+      save_claude_config(config)
+    end
+
+    def show_example_config
+      ui.clear
+      ui.header("Example Configuration")
+
+      mode = ui.choose("Select connection mode:", ["STDIO", "HTTP"])
+      return if mode.nil?
+
+      if mode == "STDIO"
+        config = generate_example_config(:stdio)
+        ui.info("STDIO mode configuration:")
+      else
+        config = generate_example_config(:http)
+        ui.info("HTTP mode configuration:")
+        puts
+        ui.warning("For HTTP mode, install mcp-remote first:")
+        puts Colors.text("  npm install -g mcp-remote")
+      end
+
+      puts
+      puts Colors.lavender("#{claude_config_path}:")
+      puts Colors.overlay("─" * 50)
+      puts JSON.pretty_generate(config)
+      puts Colors.overlay("─" * 50)
+      puts
+      ui.info("Copy the above JSON to your Claude Desktop config file.")
+    end
+
+    def backup_claude_config
+      config_file = claude_config_path
+      return unless File.exist?(config_file)
+
+      backup_file = "#{config_file}.backup.#{Time.now.strftime('%Y%m%d_%H%M%S')}"
+      FileUtils.cp(config_file, backup_file)
+      ui.success("Backed up existing config to: #{File.basename(backup_file)}")
+    end
+
+    def save_claude_config(config)
+      config_file = claude_config_path
+
+      begin
+        File.write(config_file, JSON.pretty_generate(config))
+        ui.success("Configuration saved!")
+        puts
+        ui.warning("Please restart Claude Desktop to apply changes.")
+      rescue => e
+        ui.error("Failed to save config: #{e.message}")
+      end
+    end
+
+    def open_config
+      ui.clear
+      ui.header("Open Config File")
+
+      ui.info("Config file: #{config_path}")
+      puts
+
+      editor = ENV["EDITOR"] || ENV["VISUAL"]
+
+      if editor
+        if ui.confirm("Open in #{editor}?", default: true)
+          system("#{editor} '#{config_path}'")
+          @projects = load_projects
+          ui.success("Reloaded configuration")
+        end
+      else
+        ui.warning("No EDITOR environment variable set.")
+        ui.info("You can manually edit: #{config_path}")
+
+        if RUBY_PLATFORM.match?(/darwin/)
+          if ui.confirm("Open in TextEdit?", default: true)
+            system("open '#{config_path}'")
+          end
+        elsif RUBY_PLATFORM.match?(/linux/)
+          if ui.confirm("Open with xdg-open?", default: true)
+            system("xdg-open '#{config_path}'")
+          end
+        end
+      end
+    end
+
+    def validate_projects
+      ui.clear
+      ui.header("Validate All Projects")
+
+      if projects.empty?
+        ui.warning("No projects to validate.")
+        return
+      end
+
+      valid_count = 0
+      invalid_count = 0
+
+      projects.each do |name, path|
+        expanded = File.expand_path(path)
+
+        print "#{Colors.text(name)}: "
+
+        issues = []
+        issues << "directory not found" unless File.directory?(expanded)
+
+        if File.directory?(expanded)
+          issues << "no Gemfile" unless File.exist?(File.join(expanded, "Gemfile"))
+          issues << "no config/application.rb" unless File.exist?(File.join(expanded, "config", "application.rb"))
+          issues << "no bin/rails" unless File.exist?(File.join(expanded, "bin", "rails"))
+        end
+
+        if issues.empty?
+          ui.success("Valid Rails project")
+          valid_count += 1
+        else
+          ui.error(issues.join(", "))
+          invalid_count += 1
+        end
+      end
+
+      puts
+      ui.info("Summary: #{valid_count} valid, #{invalid_count} invalid")
+    end
+  end
+end
+
+# Entry point
+if __FILE__ == $0
+  require "shellwords"
+
+  # Handle --help
+  if ARGV.include?("-h") || ARGV.include?("--help")
+    puts "Rails MCP Server - Configuration Tool"
+    puts
+    puts "Usage: rails-mcp-config"
+    puts
+    puts "Interactive tool to manage Rails MCP Server configuration."
+    puts "Uses Gum (https://github.com/charmbracelet/gum) for enhanced UI if available."
+    puts
+    puts "Features:"
+    puts "  • Manage Rails projects"
+    puts "  • Download and import documentation guides"
+    puts "  • Configure Claude Desktop integration"
+    puts
+    puts "Options:"
+    puts "  -h, --help     Show this help message"
+    puts "  --list         List all projects and exit"
+    puts "  --validate     Validate all projects and exit"
+    puts
+    puts "Install Gum for best experience:"
+    puts "  brew install gum        # macOS"
+    puts "  sudo apt install gum    # Debian/Ubuntu"
+    puts "  yay -S gum              # Arch Linux"
+    exit 0
+  end
+
+  manager = RailsMcpConfig::ProjectManager.new
+
+  # Handle non-interactive commands
+  if ARGV.include?("--list")
+    manager.send(:list_projects)
+    exit 0
+  end
+
+  if ARGV.include?("--validate")
+    manager.send(:validate_projects)
+    exit 0
+  end
+
+  # Run interactive mode
+  manager.run
+end

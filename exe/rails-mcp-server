@@ -72,17 +72,30 @@ end
 RailsMcpServer.config.log_level = log_level
 RailsMcpServer.log(:info, "Starting Rails MCP Server in #{mode} mode...")
 
-# Create tools configuration for both modes
+# Register only bootstrap tools - other tools are invoked via execute_tool
+# This reduces context token usage by not loading all tool definitions upfront
+#
+# Workflow:
+#   1. switch_project  - Select a Rails project to work with
+#   2. search_tools    - Discover available tools and their parameters
+#   3. execute_tool    - Invoke internal tools by name
+#   4. execute_ruby    - Run custom Ruby code for complex queries
+#
 def setup_mcp_tools(server)
-  server.register_tools(RailsMcpServer::SwitchProject, RailsMcpServer::ProjectInfo,
-    RailsMcpServer::ListFiles, RailsMcpServer::GetFile, RailsMcpServer::GetRoutes, RailsMcpServer::AnalyzeModels,
-    RailsMcpServer::GetSchema, RailsMcpServer::AnalyzeControllerViews, RailsMcpServer::AnalyzeEnvironmentConfig,
-    RailsMcpServer::LoadGuide)
+  server.register_tools(
+    RailsMcpServer::SwitchProject,
+    RailsMcpServer::SearchTools,
+    RailsMcpServer::ExecuteTool,
+    RailsMcpServer::ExecuteRuby
+  )
 
-  server.register_resources(RailsMcpServer::RailsGuidesResource, RailsMcpServer::RailsGuidesResources,
-    RailsMcpServer::StimulusGuidesResource, RailsMcpServer::StimulusGuidesResources, RailsMcpServer::TurboGuidesResource,
-    RailsMcpServer::TurboGuidesResources, RailsMcpServer::CustomGuidesResource, RailsMcpServer::CustomGuidesResources,
-    RailsMcpServer::KamalGuidesResource, RailsMcpServer::KamalGuidesResources)
+  server.register_resources(
+    RailsMcpServer::RailsGuidesResource, RailsMcpServer::RailsGuidesResources,
+    RailsMcpServer::StimulusGuidesResource, RailsMcpServer::StimulusGuidesResources,
+    RailsMcpServer::TurboGuidesResource, RailsMcpServer::TurboGuidesResources,
+    RailsMcpServer::CustomGuidesResource, RailsMcpServer::CustomGuidesResources,
+    RailsMcpServer::KamalGuidesResource, RailsMcpServer::KamalGuidesResources
+  )
 end
 
 case mode
