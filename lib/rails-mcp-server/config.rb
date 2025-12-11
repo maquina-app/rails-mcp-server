@@ -29,6 +29,16 @@ module RailsMcpServer
     private
 
     def load_projects
+      # Single project mode - use current directory, skip projects.yml
+      if ENV["RAILS_MCP_SINGLE_PROJECT"]
+        project_name = File.basename(Dir.pwd)
+        @projects = {project_name => Dir.pwd}
+        @current_project = project_name
+        @active_project_path = Dir.pwd
+        @logger.add(Logger::INFO, "Single project mode: #{project_name} at #{Dir.pwd}")
+        return
+      end
+
       projects_file = File.join(@config_dir, "projects.yml")
       @projects = {}
 

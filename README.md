@@ -133,6 +133,32 @@ When using `--bind-all`:
 
 **Security Note**: Only use `--bind-all` on trusted networks. The server includes built-in security features to validate origins and IP addresses, but exposing any service to your network increases the attack surface.
 
+### Single Project Mode
+
+For ephemeral environments (like GitHub Copilot Agent) or git worktrees (like Claude Code), you can use single project mode which skips `projects.yml` and uses the current directory as the only project:
+
+```bash
+# Use current directory as the project
+rails-mcp-server --single-project
+
+# Can be combined with other options
+rails-mcp-server --single-project --log-level debug
+```
+
+When using `--single-project`:
+
+- Skips `projects.yml` configuration file entirely
+- Uses the current directory as the project path
+- Auto-switches to the project on startup (no need to call `switch_project`)
+- Can also be enabled via `RAILS_MCP_SINGLE_PROJECT=1` environment variable
+
+This mode is ideal for:
+
+- **GitHub Copilot Agent**: Ephemeral GitHub Actions environments
+- **Claude Code worktrees**: Each worktree gets its own isolated MCP server
+- **CI/CD pipelines**: No configuration files needed
+- **Quick testing**: Run against any Rails project without setup
+
 ### Logging Options
 
 The server logs to a file in the `./log` directory by default. You can customize logging with these options:
@@ -262,6 +288,101 @@ npx mcp-remote http://localhost:6029/mcp/sse
 This setup allows STDIO-only clients to communicate with the Rails MCP Server through the proxy, benefiting from the HTTP/SSE capabilities while maintaining client compatibility.
 
 **Tip**: The `rails-mcp-config` tool can configure HTTP mode with mcp-remote automatically.
+
+## GitHub Copilot Agent Integration
+
+The Rails MCP Server can be used with GitHub Copilot coding agent in GitHub Actions environments.
+
+### MCP Configuration
+
+Add the following to your repository's Copilot settings (Repository Settings → Copilot → Coding agent → MCP configuration):
+
+```json
+{
+  "mcpServers": {
+    "rails": {
+      "type": "local",
+      "command": "rails-mcp-server",
+      "args": ["--single-project"],
+      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+    }
+  }
+}
+```
+
+### Setup Workflow
+
+Create `.github/workflows/copilot-setup-steps.yml`:
+
+```yaml
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Install Rails MCP Server
+        run: gem install rails-mcp-server
+
+      - name: Install project dependencies
+        run: bundle install
+```
+
+**Note**: GitHub Copilot Agent only supports MCP **tools**, not resources. The documentation guides won't be available via MCP resources, but `load_guide` still works via `execute_tool` if guides are downloaded during setup.
+
+For detailed setup instructions, see [docs/COPILOT_AGENT.md](docs/COPILOT_AGENT.md).
+
+## Claude Code Worktree Integration
+
+When using Claude Code with git worktrees, each worktree can have its own isolated MCP server instance using STDIO mode (no port conflicts).
+
+Create a `.mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "rails-mcp": {
+      "type": "stdio",
+      "command": "rails-mcp-server",
+      "args": ["--single-project"]
+    }
+  }
+}
+```
+
+Key benefits:
+
+- **No port conflicts**: STDIO mode means each worktree gets its own subprocess
+- **No configuration needed**: `--single-project` auto-detects the current directory
+- **Version controlled**: `.mcp.json` can be committed to share with your team
+
+For development with local gem changes:
+
+```json
+{
+  "mcpServers": {
+    "rails-mcp": {
+      "type": "stdio",
+      "command": "bundle",
+      "args": ["exec", "rails-mcp-server", "--single-project"]
+    }
+  }
+}
+```
 
 ## How the Server Works
 

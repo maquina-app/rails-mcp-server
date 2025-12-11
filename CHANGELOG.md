@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-12-10
+
+### Added
+
+- **Single Project Mode**: New `--single-project` flag for ephemeral and worktree environments
+  - Skips `projects.yml` configuration file entirely
+  - Uses current directory as the only project
+  - Auto-switches to project on startup
+  - Supports `RAILS_MCP_SINGLE_PROJECT` environment variable
+  - Enables GitHub Copilot Agent compatibility
+  - Enables Claude Code worktree compatibility
+
 ## [1.4.0] - 2025-12-10
 
 ### Added
@@ -254,6 +266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.4.1** (2025-12-10): Single project mode for GitHub Copilot Agent and Claude Code worktrees
 - **v1.4.0** (2025-12-10): Context-efficient architecture with progressive tool discovery (67% token reduction)
 - **v1.2.3** (2025-12-10): Setup script fix for readonly filesystems (NixOS compatibility)
 - **v1.2.2** (2025-07-21): Network access support with --bind-all flag

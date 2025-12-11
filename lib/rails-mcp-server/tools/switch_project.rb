@@ -2,7 +2,7 @@ module RailsMcpServer
   class SwitchProject < BaseTool
     tool_name "switch_project"
 
-    description "Change the active Rails project to interact with a different codebase. Must be called before using other tools. Available projects are defined in the projects.yml configuration file."
+    description "Change the active Rails project to interact with a different codebase. Must be called before using other tools unless --single-project mode is enabled (auto-selects current directory). Available projects are defined in the projects.yml configuration file."
 
     arguments do
       required(:project_name).filled(:string).description("Name of the project as defined in the projects.yml file (case-sensitive)")
