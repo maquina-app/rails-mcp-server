@@ -34,6 +34,29 @@ bundle exec exe/rails-mcp-server --mode http -p 6029
 bundle exec exe/rails-mcp-config
 ```
 
+## Ruby Version Manager Note
+
+If `ruby`, `bundle`, or gem commands fail with "command not found" or version errors, Ruby may be installed via a version manager (rbenv, rvm, or mise) that isn't initialized in the current shell.
+
+Try sourcing your shell config first:
+
+```bash
+# For zsh (default on macOS)
+source ~/.zshrc
+
+# For bash
+source ~/.bashrc
+
+# Then retry your command
+bundle exec rake test
+```
+
+Alternatively, use the full path to the Ruby shim:
+```bash
+~/.rbenv/shims/ruby -v
+~/.rbenv/shims/bundle exec rake test
+```
+
 ## Architecture
 
 ### Core Components
@@ -179,7 +202,7 @@ All in `exe/`:
 
 - `fast-mcp` (~> 1.6.0) - MCP protocol implementation
 - `rack` (~> 3.2.0) - HTTP server support
-- `puma` (~> 7.1.0) - Web server for HTTP mode
+- `puma` (>= 6.6.0) - Web server for HTTP mode
 - `addressable` (~> 2.8) - URI handling
 - `logger` (~> 1.7.0) - Logging
 
