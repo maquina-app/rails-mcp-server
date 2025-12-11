@@ -103,7 +103,7 @@ module RailsMcpServer
       <<~GUIDE
         ### #{title}
         **Guide name:** `#{short_name}`
-        #{description.empty? ? "" : "**Description:** #{description}"}
+        #{"**Description:** #{description}" unless description.empty?}
       GUIDE
     end
   end

@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    rails-mcp-server (1.4.0)
+    rails-mcp-server (1.4.1)
       addressable (~> 2.8)
       fast-mcp (~> 1.6.0)
       logger (~> 1.7.0)

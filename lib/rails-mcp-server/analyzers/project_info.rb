@@ -8,7 +8,7 @@ module RailsMcpServer
           return message
         end
 
-        max_depth = [[max_depth.to_i, 1].max, 5].min
+        max_depth = [[max_depth.to_i, 1].max, 5].min # rubocop:disable Style/ComparableClamp
         detail_level = "full" unless %w[minimal summary full].include?(detail_level)
 
         gemfile_path = File.join(active_project_path, "Gemfile")

@@ -9,7 +9,7 @@ module RailsMcpServer
         detail_level = "full" unless %w[names associations full].include?(detail_level)
         analysis_type = "introspection" unless %w[introspection static full].include?(analysis_type)
 
-        if model_names && model_names.is_a?(Array) && model_names.any?
+        if model_names&.is_a?(Array) && model_names.any?
           return batch_model_info(model_names, detail_level, analysis_type)
         end
 

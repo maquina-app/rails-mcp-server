@@ -19,44 +19,44 @@ module RailsMcpConfig
     end
 
     # Catppuccin Mocha palette
-    def self.green(text)    = rgb(166, 227, 161, text)  # #a6e3a1
-    def self.red(text)      = rgb(243, 139, 168, text)  # #f38ba8
-    def self.yellow(text)   = rgb(249, 226, 175, text)  # #f9e2af
-    def self.blue(text)     = rgb(137, 180, 250, text)  # #89b4fa
-    def self.mauve(text)    = rgb(203, 166, 247, text)  # #cba6f7
-    def self.teal(text)     = rgb(148, 226, 213, text)  # #94e2d5
-    def self.peach(text)    = rgb(250, 179, 135, text)  # #fab387
-    def self.pink(text)     = rgb(245, 194, 231, text)  # #f5c2e7
-    def self.sky(text)      = rgb(137, 220, 235, text)  # #89dceb
+    def self.green(text) = rgb(166, 227, 161, text)  # #a6e3a1
+    def self.red(text) = rgb(243, 139, 168, text)  # #f38ba8
+    def self.yellow(text) = rgb(249, 226, 175, text)  # #f9e2af
+    def self.blue(text) = rgb(137, 180, 250, text)  # #89b4fa
+    def self.mauve(text) = rgb(203, 166, 247, text)  # #cba6f7
+    def self.teal(text) = rgb(148, 226, 213, text)  # #94e2d5
+    def self.peach(text) = rgb(250, 179, 135, text)  # #fab387
+    def self.pink(text) = rgb(245, 194, 231, text)  # #f5c2e7
+    def self.sky(text) = rgb(137, 220, 235, text)  # #89dceb
     def self.lavender(text) = rgb(180, 190, 254, text)  # #b4befe
-    def self.text(text)     = rgb(205, 214, 244, text)  # #cdd6f4
-    def self.subtext(text)  = rgb(166, 173, 200, text)  # #a6adc8
-    def self.overlay(text)  = rgb(108, 112, 134, text)  # #6c7086
+    def self.text(text) = rgb(205, 214, 244, text)  # #cdd6f4
+    def self.subtext(text) = rgb(166, 173, 200, text)  # #a6adc8
+    def self.overlay(text) = rgb(108, 112, 134, text)  # #6c7086
 
     # Semantic aliases
-    def self.success(text)  = green(text)
-    def self.error(text)    = red(text)
-    def self.warning(text)  = yellow(text)
-    def self.info(text)     = sky(text)
-    def self.accent(text)   = mauve(text)
-    def self.bold(text)     = "\e[1m#{text}\e[0m"
-    def self.dim(text)      = overlay(text)
+    def self.success(text) = green(text)
+    def self.error(text) = red(text)
+    def self.warning(text) = yellow(text)
+    def self.info(text) = sky(text)
+    def self.accent(text) = mauve(text)
+    def self.bold(text) = "\e[1m#{text}\e[0m"
+    def self.dim(text) = overlay(text)
 
     # Gum hex colors (without #)
-    GUM_GREEN    = "a6e3a1"
-    GUM_RED      = "f38ba8"
-    GUM_YELLOW   = "f9e2af"
-    GUM_BLUE     = "89b4fa"
-    GUM_MAUVE    = "cba6f7"
-    GUM_TEAL     = "94e2d5"
-    GUM_PEACH    = "fab387"
-    GUM_PINK     = "f5c2e7"
-    GUM_SKY      = "89dceb"
+    GUM_GREEN = "a6e3a1"
+    GUM_RED = "f38ba8"
+    GUM_YELLOW = "f9e2af"
+    GUM_BLUE = "89b4fa"
+    GUM_MAUVE = "cba6f7"
+    GUM_TEAL = "94e2d5"
+    GUM_PEACH = "fab387"
+    GUM_PINK = "f5c2e7"
+    GUM_SKY = "89dceb"
     GUM_LAVENDER = "b4befe"
-    GUM_TEXT     = "cdd6f4"
-    GUM_SUBTEXT  = "a6adc8"
-    GUM_OVERLAY  = "6c7086"
-    GUM_BASE     = "1e1e2e"
+    GUM_TEXT = "cdd6f4"
+    GUM_SUBTEXT = "a6adc8"
+    GUM_OVERLAY = "6c7086"
+    GUM_BASE = "1e1e2e"
   end
 
   # Gum wrapper with fallback to basic terminal
@@ -120,14 +120,14 @@ module RailsMcpConfig
     def choose(prompt, options, allow_cancel: true)
       return nil if options.empty?
 
-      options = options + ["Cancel"] if allow_cancel
+      options += ["Cancel"] if allow_cancel
 
       if gum_available?
-        result = `gum choose --header "#{prompt}" \
+        result = %x(gum choose --header "#{prompt}" \
           --header.foreground "##{Colors::GUM_MAUVE}" \
           --cursor.foreground "##{Colors::GUM_PINK}" \
           --item.foreground "##{Colors::GUM_TEXT}" \
-          #{options.map { |o| "'#{o}'" }.join(" ")}`.strip
+          #{options.map { |o| "'#{o}'" }.join(" ")}).strip
         return nil if result.empty? || result == "Cancel" || separator?(result)
         result
       else
@@ -162,12 +162,12 @@ module RailsMcpConfig
       return [] if options.empty?
 
       if gum_available?
-        result = `gum choose --no-limit --header "#{prompt}" \
+        result = %x(gum choose --no-limit --header "#{prompt}" \
           --header.foreground "##{Colors::GUM_MAUVE}" \
           --cursor.foreground "##{Colors::GUM_PINK}" \
           --item.foreground "##{Colors::GUM_TEXT}" \
           --selected.foreground "##{Colors::GUM_GREEN}" \
-          #{options.map { |o| "'#{o}'" }.join(" ")}`.strip
+          #{options.map { |o| "'#{o}'" }.join(" ")}).strip
         result.split("\n").map(&:strip).reject(&:empty?)
       else
         puts
@@ -183,7 +183,7 @@ module RailsMcpConfig
         return options.dup if input == "all"
 
         indices = input.split(/[\s,]+/).map(&:to_i)
-        indices.select { |i| i >= 1 && i <= options.length }.map { |i| options[i - 1] }
+        indices.select { |i| i.between?(1, options.length) }.map { |i| options[i - 1] }
       end
     end
 
@@ -247,7 +247,7 @@ module RailsMcpConfig
         all_rows = [headers] + rows
         widths = headers.map.with_index do |_, i|
           calculated = all_rows.map { |row| row[i].to_s.length }.max
-          max_widths && max_widths[i] ? [calculated, max_widths[i]].min : calculated
+          (max_widths && max_widths[i]) ? [calculated, max_widths[i]].min : calculated
         end
 
         # Print header
@@ -293,7 +293,7 @@ module RailsMcpConfig
 
       spinner_thread = Thread.new do
         i = 0
-        while !stop_spinner
+        until stop_spinner
           print "\r#{Colors.pink(frames[i % frames.length])} #{Colors.text(title)}"
           $stdout.flush
           sleep 0.08
@@ -716,7 +716,7 @@ module RailsMcpConfig
       # Check download status for each guide
       guide_status = available.map do |guide|
         downloaded = guide_downloaded?(guide)
-        { name: guide, downloaded: downloaded }
+        {name: guide, downloaded: downloaded}
       end
 
       # Build options with clear status
@@ -743,23 +743,21 @@ module RailsMcpConfig
       force = ui.confirm("Force re-download (overwrite existing)?", default: false)
 
       puts
-      total_results = { downloaded: 0, skipped: 0, failed: 0 }
+      total_results = {downloaded: 0, skipped: 0, failed: 0}
 
       guide_names.each do |guide|
         puts Colors.sky("Downloading #{guide}...")
 
         results = ui.spin("  Fetching files...") do
-          begin
-            downloader = RailsMcpServer::ResourceDownloader.new(
-              guide,
-              config_dir: config_dir,
-              force: force,
-              verbose: false
-            )
-            downloader.download
-          rescue => e
-            { downloaded: 0, skipped: 0, failed: 1, error: e.message }
-          end
+          downloader = RailsMcpServer::ResourceDownloader.new(
+            guide,
+            config_dir: config_dir,
+            force: force,
+            verbose: false
+          )
+          downloader.download
+        rescue => e
+          {downloaded: 0, skipped: 0, failed: 1, error: e.message}
         end
 
         if results[:error]
@@ -818,18 +816,16 @@ module RailsMcpConfig
       puts Colors.sky("Importing from #{File.basename(path)}...")
 
       results = ui.spin("  Processing files...") do
-        begin
-          importer = RailsMcpServer::ResourceImporter.new(
-            "custom",
-            config_dir: config_dir,
-            source_path: expanded,
-            force: force,
-            verbose: false
-          )
-          importer.import
-        rescue => e
-          { imported: 0, skipped: 0, failed: 1, error: e.message }
-        end
+        importer = RailsMcpServer::ResourceImporter.new(
+          "custom",
+          config_dir: config_dir,
+          source_path: expanded,
+          force: force,
+          verbose: false
+        )
+        importer.import
+      rescue => e
+        {imported: 0, skipped: 0, failed: 1, error: e.message}
       end
 
       if results[:error]
@@ -852,7 +848,7 @@ module RailsMcpConfig
         name = File.basename(file, ".md")
         size = File.size(file)
         mtime = File.mtime(file)
-        { name: name, path: file, size: size, mtime: mtime }
+        {name: name, path: file, size: size, mtime: mtime}
       end.sort_by { |f| f[:name] }
     end
 
@@ -1020,12 +1016,12 @@ module RailsMcpConfig
     end
 
     def generate_example_config(mode, url = nil)
-      config = { "mcpServers" => {} }
+      config = {"mcpServers" => {}}
 
-      if mode == :stdio
-        config["mcpServers"]["railsMcpServer"] = generate_stdio_config
+      config["mcpServers"]["railsMcpServer"] = if mode == :stdio
+        generate_stdio_config
       else
-        config["mcpServers"]["railsMcpServer"] = generate_http_config(url || "http://localhost:3001/mcp")
+        generate_http_config(url || "http://localhost:3001/mcp")
       end
 
       config
@@ -1057,8 +1053,8 @@ module RailsMcpConfig
           ui.success("Rails MCP Server is configured")
           puts
           puts Colors.lavender("Current configuration:")
-          puts Colors.text("  command: #{rails_config['command']}")
-          puts Colors.text("  args: #{rails_config['args']&.join(' ') || '(none)'}")
+          puts Colors.text("  command: #{rails_config["command"]}")
+          puts Colors.text("  args: #{rails_config["args"]&.join(" ") || "(none)"}")
         else
           ui.warning("Rails MCP Server is NOT configured")
         end
@@ -1273,7 +1269,7 @@ module RailsMcpConfig
       config_file = claude_config_path
       return unless File.exist?(config_file)
 
-      backup_file = "#{config_file}.backup.#{Time.now.strftime('%Y%m%d_%H%M%S')}"
+      backup_file = "#{config_file}.backup.#{Time.now.strftime("%Y%m%d_%H%M%S")}"
       FileUtils.cp(config_file, backup_file)
       ui.success("Backed up existing config to: #{File.basename(backup_file)}")
     end
@@ -1364,7 +1360,7 @@ module RailsMcpConfig
 end
 
 # Entry point
-if __FILE__ == $0
+if __FILE__ == $0 || File.basename($0) == "rails-mcp-config"
   require "shellwords"
 
   # Handle --help

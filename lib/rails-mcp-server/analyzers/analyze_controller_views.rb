@@ -63,7 +63,7 @@ module RailsMcpServer
 
       def format_summary(controller_class, file_path, relative_path)
         data = get_controller_summary(controller_class)
-        output = ["#{controller_class}", "  File: #{relative_path}", "  Actions: #{data[:actions].size}"]
+        output = [controller_class.to_s, "  File: #{relative_path}", "  Actions: #{data[:actions].size}"]
         data[:actions].each do |action|
           route = data[:routes].find { |r| r[:action] == action }
           output << if route
@@ -148,7 +148,7 @@ module RailsMcpServer
             opts = []
             opts << "only: [#{cb[:only].join(", ")}]" if cb[:only]&.any?
             opts << "except: [#{cb[:except].join(", ")}]" if cb[:except]&.any?
-            output << "  #{cb[:kind]}_action :#{cb[:filter]}#{opts.any? ? ", #{opts.join(", ")}" : ""}"
+            output << "  #{cb[:kind]}_action :#{cb[:filter]}#{", #{opts.join(", ")}" if opts.any?}"
           end
         end
 

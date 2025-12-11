@@ -152,7 +152,7 @@ module RailsMcpServer
           "Route paths (#{paths.size} unique):\n\n#{paths.join("\n")}"
 
         when "summary"
-          output = +"Rails Routes (#{routes.size} routes):\n"
+          output = "Rails Routes (#{routes.size} routes):\n"
 
           by_controller = routes.group_by { |r| r[:controller] }
 
@@ -169,7 +169,7 @@ module RailsMcpServer
           output
 
         when "full"
-          output = +"Rails Routes (#{routes.size} routes):\n"
+          output = "Rails Routes (#{routes.size} routes):\n"
           output << "=" * 70 << "\n"
 
           routes.each do |r|

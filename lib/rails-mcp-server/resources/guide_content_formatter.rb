@@ -40,13 +40,13 @@ module RailsMcpServer
         <<~GUIDE
           ### #{title}
           **Guide name:** `#{short_name}` or `#{full_name}`
-          #{description.empty? ? "" : "**Description:** #{description}"}
+          #{"**Description:** #{description}" unless description.empty?}
         GUIDE
       else
         <<~GUIDE
           ## #{title}
           **Guide name:** `#{short_name}`
-          #{description.empty? ? "" : "**Description:** #{description}"}
+          #{"**Description:** #{description}" unless description.empty?}
         GUIDE
       end
     end
@@ -59,7 +59,7 @@ module RailsMcpServer
       usage += "```\n"
 
       examples.each do |example|
-        usage += "load_guide guides: \"#{framework_name.downcase}\", guide: \"#{example[:guide]}\"#{example[:comment] ? " # " + example[:comment] : ""}\n"
+        usage += "load_guide guides: \"#{framework_name.downcase}\", guide: \"#{example[:guide]}\"#{" # " + example[:comment] if example[:comment]}\n"
       end
 
       usage += "```\n"

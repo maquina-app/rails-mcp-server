@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-12-11
+
+### Fixed
+
+- **rails-mcp-config rbenv compatibility**: Fixed silent failure when running via rbenv shims
+  - The `__FILE__ == $0` guard failed because RubyGems' `load` creates a path mismatch between `__FILE__` (gem path) and `$0` (shim path)
+  - Now correctly detects execution via `File.basename($0) == "rails-mcp-config"`
+
 ## [1.4.0] - 2025-12-10
 
 ### Added

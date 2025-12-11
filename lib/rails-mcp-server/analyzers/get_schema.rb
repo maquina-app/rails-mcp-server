@@ -10,7 +10,7 @@ module RailsMcpServer
 
         detail_level = "full" unless %w[tables summary full].include?(detail_level)
 
-        if table_names && table_names.is_a?(Array) && table_names.any?
+        if table_names&.is_a?(Array) && table_names.any?
           return batch_table_info(table_names)
         end
 
@@ -110,7 +110,7 @@ module RailsMcpServer
         end
 
         formatted_columns = columns.map do |name, type, nullable, default|
-          "  #{name} (#{type})#{nullable ? ", nullable" : ""}#{default ? ", default: #{default}" : ""}"
+          "  #{name} (#{type})#{", nullable" if nullable}#{", default: #{default}" if default}"
         end
 
         output = <<~SCHEMA
@@ -199,7 +199,7 @@ module RailsMcpServer
 
         formatted_indexes = indexes.map do |name, columns, unique|
           cols = columns.is_a?(Array) ? columns.join(", ") : columns
-          "  #{name} (#{cols})#{unique ? " UNIQUE" : ""}"
+          "  #{name} (#{cols})#{" UNIQUE" if unique}"
         end
 
         <<~IDX
