@@ -22,6 +22,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["rails-mcp-server", "rails-mcp-setup-claude", "rails-mcp-server-download-resources", "rails-mcp-config"]
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "activesupport", ">= 7.0"
   spec.add_dependency "addressable", "~> 2.8"
   spec.add_dependency "fast-mcp", "~> 1.6.0"
   spec.add_dependency "rack", "~> 3.2.0"
