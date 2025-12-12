@@ -20,26 +20,44 @@ module RailsMcpConfig
 
     # Catppuccin Mocha palette
     def self.green(text) = rgb(166, 227, 161, text)  # #a6e3a1
+
     def self.red(text) = rgb(243, 139, 168, text)  # #f38ba8
+
     def self.yellow(text) = rgb(249, 226, 175, text)  # #f9e2af
+
     def self.blue(text) = rgb(137, 180, 250, text)  # #89b4fa
+
     def self.mauve(text) = rgb(203, 166, 247, text)  # #cba6f7
+
     def self.teal(text) = rgb(148, 226, 213, text)  # #94e2d5
+
     def self.peach(text) = rgb(250, 179, 135, text)  # #fab387
+
     def self.pink(text) = rgb(245, 194, 231, text)  # #f5c2e7
+
     def self.sky(text) = rgb(137, 220, 235, text)  # #89dceb
+
     def self.lavender(text) = rgb(180, 190, 254, text)  # #b4befe
+
     def self.text(text) = rgb(205, 214, 244, text)  # #cdd6f4
+
     def self.subtext(text) = rgb(166, 173, 200, text)  # #a6adc8
+
     def self.overlay(text) = rgb(108, 112, 134, text)  # #6c7086
 
     # Semantic aliases
     def self.success(text) = green(text)
+
     def self.error(text) = red(text)
+
     def self.warning(text) = yellow(text)
+
     def self.info(text) = sky(text)
+
     def self.accent(text) = mauve(text)
+
     def self.bold(text) = "\e[1m#{text}\e[0m"
+
     def self.dim(text) = overlay(text)
 
     # Gum hex colors (without #)
@@ -933,7 +951,7 @@ module RailsMcpConfig
       manifest_path = File.join(config_dir, "resources", "custom", "manifest.yaml")
       if File.exist?(manifest_path)
         begin
-          manifest = YAML.load_file(manifest_path)
+          manifest = YAML.safe_load_file(manifest_path, permitted_classes: [Symbol, Time])
           if manifest && manifest["files"]
             selected.each do |name|
               manifest["files"].delete("#{name}.md")

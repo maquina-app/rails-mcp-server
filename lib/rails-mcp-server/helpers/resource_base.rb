@@ -27,7 +27,7 @@ module RailsMcpServer
 
     def load_manifest
       @manifest = if File.exist?(@manifest_file)
-        YAML.load_file(@manifest_file)
+        YAML.safe_load_file(@manifest_file, permitted_classes: [Symbol, Time])
       else
         create_manifest
       end
