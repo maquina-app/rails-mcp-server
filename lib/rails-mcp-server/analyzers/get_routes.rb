@@ -104,12 +104,13 @@ module RailsMcpServer
           end
         RUBY
 
-        json_output = execute_rails_runner(script)
+        raw_output = execute_rails_runner(script)
+        json_output = extract_json(raw_output)
 
         begin
           JSON.parse(json_output, symbolize_names: true)
         rescue JSON::ParserError => e
-          {error: "Failed to parse routes: #{e.message}", raw: json_output}
+          {error: "Failed to parse routes: #{e.message}", raw: raw_output}
         end
       end
 

@@ -35,6 +35,18 @@ module RailsMcpServer
       def underscore(string)
         string.to_s.underscore
       end
+
+      def extract_json(output)
+        return output if output.nil? || output.empty?
+
+        start_idx = output.index("{")
+        return output unless start_idx
+
+        end_idx = output.rindex("}")
+        return output unless end_idx && end_idx > start_idx
+
+        output[start_idx..end_idx]
+      end
     end
   end
 end

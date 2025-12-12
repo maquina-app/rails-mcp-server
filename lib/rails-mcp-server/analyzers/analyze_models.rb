@@ -94,9 +94,9 @@ module RailsMcpServer
 
       def introspection_analysis(model_name)
         script = build_introspection_script(model_name)
-        json_output = execute_rails_runner(script)
+        raw_output = execute_rails_runner(script)
         data = begin
-          JSON.parse(json_output)
+          JSON.parse(extract_json(raw_output))
         rescue
           nil
         end
@@ -161,9 +161,9 @@ module RailsMcpServer
 
       def static_analysis(model_file)
         script = build_static_analysis_script(model_file)
-        json_output = execute_rails_runner(script)
+        raw_output = execute_rails_runner(script)
         data = begin
-          JSON.parse(json_output)
+          JSON.parse(extract_json(raw_output))
         rescue
           nil
         end
@@ -232,7 +232,7 @@ module RailsMcpServer
       def get_associations_via_introspection(model_name)
         script = "require 'json'; puts (#{model_name}.reflect_on_all_associations.map { |a| { name: a.name.to_s, type: a.macro.to_s } } rescue []).to_json"
         begin
-          JSON.parse(execute_rails_runner(script)).map { |a| a.transform_keys(&:to_sym) }
+          JSON.parse(extract_json(execute_rails_runner(script))).map { |a| a.transform_keys(&:to_sym) }
         rescue
           []
         end
