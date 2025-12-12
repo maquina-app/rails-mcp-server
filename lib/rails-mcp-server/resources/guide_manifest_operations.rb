@@ -13,7 +13,7 @@ module RailsMcpServer
         raise StandardError, error_message
       end
 
-      YAML.load_file(manifest_file)
+      YAML.safe_load_file(manifest_file, permitted_classes: [Symbol, Time])
     end
 
     # Extract guide metadata from manifest entry

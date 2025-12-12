@@ -55,7 +55,7 @@ module RailsMcpServer
       def get_actions_via_introspection(controller_class)
         script = "require 'json'; puts (#{controller_class}.action_methods.to_a.sort rescue []).to_json"
         begin
-          JSON.parse(execute_rails_runner(script))
+          JSON.parse(extract_json(execute_rails_runner(script)))
         rescue
           []
         end
@@ -90,7 +90,7 @@ module RailsMcpServer
           end
         RUBY
         begin
-          JSON.parse(execute_rails_runner(script), symbolize_names: true)
+          JSON.parse(extract_json(execute_rails_runner(script)), symbolize_names: true)
         rescue
           {actions: [], routes: []}
         end
@@ -129,7 +129,7 @@ module RailsMcpServer
           end
         RUBY
         data = begin
-          JSON.parse(execute_rails_runner(script), symbolize_names: true)
+          JSON.parse(extract_json(execute_rails_runner(script)), symbolize_names: true)
         rescue
           nil
         end
@@ -198,7 +198,7 @@ module RailsMcpServer
           end
         RUBY
         data = begin
-          JSON.parse(execute_rails_runner(script), symbolize_names: true)
+          JSON.parse(extract_json(execute_rails_runner(script)), symbolize_names: true)
         rescue
           nil
         end

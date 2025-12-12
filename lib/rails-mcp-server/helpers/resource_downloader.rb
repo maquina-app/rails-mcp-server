@@ -32,7 +32,7 @@ module RailsMcpServer
       config_file = File.join(File.dirname(__FILE__), "..", "..", "..", "config", "resources.yml")
       return [] unless File.exist?(config_file)
 
-      YAML.load_file(config_file).keys
+      YAML.safe_load_file(config_file, permitted_classes: [Symbol]).keys
     rescue => e
       warn "Failed to load resource configuration: #{e.message}"
       []
@@ -63,7 +63,7 @@ module RailsMcpServer
 
       raise DownloadError, "Resource configuration file not found" unless File.exist?(config_file)
 
-      all_configs = YAML.load_file(config_file)
+      all_configs = YAML.safe_load_file(config_file, permitted_classes: [Symbol])
       @config = all_configs[@resource_name]
 
       raise DownloadError, "Unknown resource: #{@resource_name}" unless @config

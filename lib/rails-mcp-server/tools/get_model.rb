@@ -1,3 +1,5 @@
+require "active_support/core_ext/string/inflections"
+
 module RailsMcpServer
   class GetModels < BaseTool
     tool_name "get_models"
@@ -17,10 +19,16 @@ module RailsMcpServer
       end
 
       if model_name
+        unless PathValidator.valid_identifier?(model_name)
+          message = "Invalid model name: #{model_name}. Use CamelCase (e.g., 'User', 'Admin::User')."
+          log(:warn, message)
+          return message
+        end
+
         log(:info, "Getting info for specific model: #{model_name}")
 
         # Check if the model file exists
-        model_file = File.join(active_project_path, "app", "models", "#{underscore(model_name)}.rb")
+        model_file = File.join(active_project_path, "app", "models", "#{model_name.underscore}.rb")
         unless File.exist?(model_file)
           log(:warn, "Model file not found: #{model_name}")
           message = "Model '#{model_name}' not found."
@@ -38,7 +46,7 @@ module RailsMcpServer
         log(:debug, "Executing Rails runner to get schema information")
         schema_info = execute_rails_command(
           active_project_path,
-          "runner \"puts #{model_name}.column_names\""
+          "puts #{model_name}.column_names"
         )
 
         # Try to get associations
@@ -100,17 +108,14 @@ module RailsMcpServer
 
     private
 
-    def execute_rails_command(project_path, command)
-      full_command = "cd #{project_path} && bin/rails #{command}"
-      `#{full_command}`
-    end
-
-    def underscore(string)
-      string.gsub("::", "/")
-        .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
-        .gsub(/([a-z\d])([A-Z])/, '\1_\2')
-        .tr("-", "_")
-        .downcase
+    def execute_rails_command(project_path, runner_script)
+      Dir.chdir(project_path) do
+        IO.popen(
+          ["bin/rails", "runner", runner_script],
+          err: [:child, :out],
+          &:read
+        )
+      end
     end
   end
 end

@@ -41,7 +41,7 @@ module RailsMcpServer
         File.write(projects_file, "# Rails MCP Projects\n# Format: project_name: /path/to/project\n")
       end
 
-      @projects = YAML.load_file(projects_file) || {}
+      @projects = YAML.safe_load_file(projects_file, permitted_classes: [Symbol]) || {}
       found_projects_size = @projects.size
       @logger.add(Logger::INFO, "Loaded #{found_projects_size} projects: #{@projects.keys.join(", ")}")
 
