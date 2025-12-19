@@ -263,6 +263,79 @@ This setup allows STDIO-only clients to communicate with the Rails MCP Server th
 
 **Tip**: The `rails-mcp-config` tool can configure HTTP mode with mcp-remote automatically.
 
+## GitHub Copilot Agent Integration
+
+Rails MCP Server works with GitHub Copilot coding agent out of the box. The server auto-detects Rails projects when started from a Rails directory or when configured with environment variables.
+
+### Quick Setup
+
+1. **Configure MCP** - Create `.github/copilot/mcp.json` in your repository:
+
+```json
+{
+  "mcpServers": {
+    "rails": {
+      "type": "local",
+      "command": "rails-mcp-server",
+      "args": ["--single-project"],
+      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+    }
+  }
+}
+```
+
+2. **Setup Steps** - Create `.github/workflows/copilot-setup-steps.yml`:
+
+```yaml
+name: "Copilot Setup Steps"
+
+on: workflow_dispatch
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Install Rails MCP Server
+        run: gem install rails-mcp-server
+```
+
+### Alternative: Environment Variable
+
+You can also use the `RAILS_MCP_PROJECT_PATH` environment variable:
+
+```json
+{
+  "mcpServers": {
+    "rails": {
+      "type": "local",
+      "command": "rails-mcp-server",
+      "env": {
+        "RAILS_MCP_PROJECT_PATH": "."
+      },
+      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+    }
+  }
+}
+```
+
+### Limitations
+
+- GitHub Copilot Agent only supports MCP **tools**, not resources or prompts
+- The `load_guide` analyzer works via `execute_tool`, but requires guides to be downloaded during setup
+
+For detailed instructions, see [docs/COPILOT_AGENT.md](docs/COPILOT_AGENT.md).
+
 ## How the Server Works
 
 The Rails MCP Server implements the Model Context Protocol using either:
@@ -437,10 +510,11 @@ execute_tool(tool_name: "analyze_environment_config")
 Load documentation guides from Rails, Turbo, Stimulus, Kamal, or Custom.
 
 ```
-execute_tool(tool_name: "load_guide", params: { guides: "rails" })
-execute_tool(tool_name: "load_guide", params: { guides: "rails", guide: "getting_started" })
-execute_tool(tool_name: "load_guide", params: { guides: "turbo" })
-execute_tool(tool_name: "load_guide", params: { guides: "stimulus" })
+execute_tool(tool_name: "load_guide", params: { library: "rails" })
+execute_tool(tool_name: "load_guide", params: { library: "rails", guide: "getting_started" })
+execute_tool(tool_name: "load_guide", params: { library: "turbo" })
+execute_tool(tool_name: "load_guide", params: { library: "stimulus" })
+execute_tool(tool_name: "load_guide", params: { library: "custom", guide: "tailwind" })
 ```
 
 ## Resources and Documentation

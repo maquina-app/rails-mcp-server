@@ -163,7 +163,7 @@ The `load_guide` tool is the primary way to access resources programmatically wi
 ### Basic Syntax
 
 ```
-load_guide guides: "category" guide: "guide_name"
+execute_tool("load_guide", { library: "category", guide: "guide_name" })
 ```
 
 ### Loading Specific Guides
@@ -295,7 +295,7 @@ Error: Source not readable: /path/to/file
 ```
 Guide 'invalid_guide' not found in Rails guides.
 ```
-**Solution**: Use `load_guide guides: "rails"` to see available guides
+**Solution**: Use `execute_tool("load_guide", { library: "rails" })` to see available guides
 
 ### Verbose Troubleshooting
 

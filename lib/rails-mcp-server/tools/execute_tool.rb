@@ -54,7 +54,7 @@ module RailsMcpServer
       },
       "load_guide" => {
         class_name: "Analyzers::LoadGuide",
-        params: [:guides, :guide]
+        params: [:library, :guide]
       }
     }.freeze
 

@@ -19,10 +19,10 @@ module RailsMcpServer
       if suggestions.any?
         message += "## Did you mean one of these?\n\n"
         suggestions.each { |suggestion| message += "- #{suggestion}\n" }
-        message += "\n**Try:** `load_guide guides: \"#{framework_name.downcase}\", guide: \"#{suggestions.first}\"`\n"
+        message += "\n**Try:** `execute_tool(\"load_guide\", { library: \"#{framework_name.downcase}\", guide: \"#{suggestions.first}\" })`\n"
       else
         message += format_available_guides_section(available_guides)
-        message += "Use `load_guide guides: \"#{framework_name.downcase}\"` to see all available guides with descriptions.\n"
+        message += "Use `execute_tool(\"load_guide\", { library: \"#{framework_name.downcase}\" })` to see all available guides with descriptions.\n"
       end
 
       message

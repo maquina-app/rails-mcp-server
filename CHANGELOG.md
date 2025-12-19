@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-12-19
+
+### Added
+
+- **GitHub Copilot Agent Support**: Full compatibility with GitHub Copilot coding agent
+  - New `--single-project` flag to use current directory as the only project
+  - New `RAILS_MCP_PROJECT_PATH` environment variable for explicit project path configuration
+  - Auto-detection of Rails applications from Gemfile (`gem "rails"`)
+  - Auto-detection of Rails engines from gemspec files (dependencies on `rails`, `railties`, `actionpack`, `activerecord`, etc.)
+  - Auto-switch to single project when only one project is configured in `projects.yml`
+- **Documentation**: New `docs/COPILOT_AGENT.md` with comprehensive setup guide for GitHub Copilot Agent
+
+### Changed
+
+- **Project Detection Priority**: Projects are now detected in this order:
+  1. `RAILS_MCP_PROJECT_PATH` environment variable (highest priority)
+  2. Auto-detection of Rails application from Gemfile in current directory
+  3. Auto-detection of Rails engine from gemspec in current directory
+  4. `projects.yml` configuration file (existing behavior)
+- **Error Messages**: Improved error message when no projects found to suggest running from a Rails directory
+- **load_guide Parameter Rename**: Renamed `guides` parameter to `library` for clarity
+  - Old: `execute_tool("load_guide", { guides: "rails", guide: "active_record" })`
+  - New: `execute_tool("load_guide", { library: "rails", guide: "active_record" })`
+  - The `library` parameter specifies the guide source: 'rails', 'turbo', 'stimulus', 'kamal', or 'custom'
+
 ## [1.4.1] - 2025-12-11
 
 ### Fixed

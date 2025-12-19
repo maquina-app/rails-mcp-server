@@ -59,7 +59,7 @@ module RailsMcpServer
       usage += "```\n"
 
       examples.each do |example|
-        usage += "load_guide guides: \"#{framework_name.downcase}\", guide: \"#{example[:guide]}\"#{" # " + example[:comment] if example[:comment]}\n"
+        usage += "execute_tool(\"load_guide\", { library: \"#{framework_name.downcase}\", guide: \"#{example[:guide]}\" })#{" # " + example[:comment] if example[:comment]}\n"
       end
 
       usage += "```\n"

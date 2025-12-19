@@ -104,11 +104,11 @@ module RailsMcpServer
       },
       "load_guide" => {
         category: "guides",
-        keywords: %w[guide documentation rails turbo stimulus kamal docs help],
-        summary: "Load Rails, Turbo, Stimulus, or Kamal documentation guides",
+        keywords: %w[guide documentation rails turbo stimulus kamal docs help custom],
+        summary: "Load Rails, Turbo, Stimulus, Kamal, or custom documentation guides",
         parameters: [
-          {name: "guides", type: "string", required: true, description: "Library: 'rails', 'turbo', 'stimulus', 'kamal', 'custom'"},
-          {name: "guide", type: "string", required: false, description: "Specific guide name to load"}
+          {name: "library", type: "string", required: true, description: "Guide source: 'rails', 'turbo', 'stimulus', 'kamal', or 'custom'"},
+          {name: "guide", type: "string", required: false, description: "Specific guide name to load (omit to list available guides)"}
         ]
       }
     }.freeze
