@@ -29,6 +29,7 @@ if ARGV[0] == "--help" || ARGV[0] == "-h"
   puts "  --mode MODE            Server mode: http or stdio (default: stdio)"
   puts "  -p, --port PORT        Port to listen on (default: 6029)"
   puts "  --bind-all             Bind to 0.0.0.0 instead of localhost (HTTP mode only)"
+  puts "  --single-project       Use current directory as the only project (skip projects.yml)"
   puts "  version                Display version information"
   puts "  --help, -h             Display this help message"
   puts ""
@@ -36,6 +37,7 @@ if ARGV[0] == "--help" || ARGV[0] == "-h"
   puts "  #{File.basename($0)} --log-level debug -p 6060"
   puts "  #{File.basename($0)} --mode http --bind-all"
   puts "  #{File.basename($0)} --mode stdio"
+  puts "  #{File.basename($0)} --single-project"
   exit 0
 end
 
@@ -63,6 +65,9 @@ while i < ARGV.length
     i += 2
   when "--bind-all"
     bind_all = true
+    i += 1
+  when "--single-project"
+    ENV["RAILS_MCP_PROJECT_PATH"] = Dir.pwd
     i += 1
   else
     i += 1

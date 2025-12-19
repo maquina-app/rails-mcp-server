@@ -160,11 +160,11 @@ railsMcpServer:execute_tool tool_name: "analyze_controller_views" params: { cont
 ### Loading Framework Guides
 
 ```
-railsMcpServer:execute_tool tool_name: "load_guide" params: { guides: "rails", guide: "getting_started" }
-railsMcpServer:execute_tool tool_name: "load_guide" params: { guides: "rails", guide: "active_record_basics" }
-railsMcpServer:execute_tool tool_name: "load_guide" params: { guides: "turbo" }
-railsMcpServer:execute_tool tool_name: "load_guide" params: { guides: "stimulus" }
-railsMcpServer:execute_tool tool_name: "load_guide" params: { guides: "kamal" }
+railsMcpServer:execute_tool tool_name: "load_guide" params: { library: "rails", guide: "getting_started" }
+railsMcpServer:execute_tool tool_name: "load_guide" params: { library: "rails", guide: "active_record_basics" }
+railsMcpServer:execute_tool tool_name: "load_guide" params: { library: "turbo" }
+railsMcpServer:execute_tool tool_name: "load_guide" params: { library: "stimulus" }
+railsMcpServer:execute_tool tool_name: "load_guide" params: { library: "kamal" }
 ```
 
 ---
