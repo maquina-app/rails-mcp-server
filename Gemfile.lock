@@ -87,7 +87,7 @@ GEM
       builder
       minitest (>= 5.0)
       ruby-progressbar
-    mocha (2.8.2)
+    mocha (3.0.1)
       ruby2_keywords (>= 0.0.5)
     nio4r (2.7.4)
     parallel (1.27.0)
@@ -151,7 +151,7 @@ PLATFORMS
 DEPENDENCIES
   minitest (~> 5.25)
   minitest-reporters (~> 1.7)
-  mocha (~> 2.7)
+  mocha (~> 3.0)
   rails-mcp-server!
   rake
   standard

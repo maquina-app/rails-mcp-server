@@ -33,5 +33,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "standard"
   spec.add_development_dependency "minitest", "~> 5.25"
   spec.add_development_dependency "minitest-reporters", "~> 1.7"
-  spec.add_development_dependency "mocha", "~> 2.7"
+  spec.add_development_dependency "mocha", "~> 3.0"
 end
