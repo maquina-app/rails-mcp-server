@@ -1,0 +1,4 @@
+name: "CodeQL config for rails-mcp-server"
+
+paths-ignore:
+  - test/fixtures/**

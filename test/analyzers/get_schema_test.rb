@@ -27,9 +27,8 @@ class GetSchemaTest < AnalyzerTestCase
   end
 
   def test_single_table_info
-    columns_response = '["id", "integer", false, nil]
-["name", "string", false, nil]
-["email", "string", false, nil]'
+    # Tab-separated format: name\ttype\tnull\tdefault
+    columns_response = "id\tinteger\tfalse\t\nname\tstring\tfalse\t\nemail\tstring\tfalse\t"
 
     stub_rails_runner(@analyzer, columns_response)
 
@@ -39,7 +38,8 @@ class GetSchemaTest < AnalyzerTestCase
   end
 
   def test_batch_table_info
-    columns_response = '["id", "integer", false, nil]'
+    # Tab-separated format: name\ttype\tnull\tdefault
+    columns_response = "id\tinteger\tfalse\t"
 
     stub_rails_runner(@analyzer, columns_response)
 

@@ -5,6 +5,7 @@ require "open3"
 require_relative "rails-mcp-server/version"
 require_relative "rails-mcp-server/config"
 require_relative "rails-mcp-server/utilities/run_process"
+require_relative "rails-mcp-server/utilities/path_validator"
 
 # MCP Tools (registered with FastMCP)
 require_relative "rails-mcp-server/tools/base_tool"

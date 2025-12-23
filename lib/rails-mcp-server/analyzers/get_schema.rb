@@ -1,6 +1,9 @@
 module RailsMcpServer
   module Analyzers
     class GetSchema < BaseAnalyzer
+      # Tab character for parsing output
+      FIELD_SEPARATOR = "\t"
+
       def call(table_name: nil, table_names: nil, detail_level: "full")
         unless current_project
           message = "No active project. Please switch to a project first."
@@ -11,10 +14,17 @@ module RailsMcpServer
         detail_level = "full" unless %w[tables summary full].include?(detail_level)
 
         if table_names&.is_a?(Array) && table_names.any?
+          invalid_tables = table_names.reject { |t| PathValidator.valid_table_name?(t) }
+          if invalid_tables.any?
+            return "Invalid table names: #{invalid_tables.join(", ")}. Table names must be alphanumeric with underscores."
+          end
           return batch_table_info(table_names)
         end
 
         if table_name
+          unless PathValidator.valid_table_name?(table_name)
+            return "Invalid table name: '#{table_name}'. Table names must be alphanumeric with underscores."
+          end
           log(:info, "Getting schema for table: #{table_name}")
           return single_table_info(table_name)
         end
@@ -56,7 +66,9 @@ module RailsMcpServer
         log(:info, "Getting full schema")
 
         schema_file = File.join(active_project_path, "db", "schema.rb")
-        unless File.exist?(schema_file)
+        structure_file = File.join(active_project_path, "db", "structure.sql")
+
+        unless File.exist?(schema_file) || File.exist?(structure_file)
           log(:info, "Schema file not found, attempting to generate it")
           RailsMcpServer::RunProcess.execute_rails_command(active_project_path, "db:schema:dump")
         end
@@ -76,6 +88,17 @@ module RailsMcpServer
             #{schema_content}
             ```
           SCHEMA
+        elsif File.exist?(structure_file)
+          tables = get_table_names
+
+          <<~SCHEMA
+            Database Schema (#{tables.size} tables)
+
+            Tables:
+            #{tables.join("\n")}
+
+            Note: Project uses structure.sql format. Use get_schema with a specific table_name for details.
+          SCHEMA
         else
           tables = get_table_names
           if tables.empty?
@@ -94,23 +117,19 @@ module RailsMcpServer
       end
 
       def single_table_info(table_name)
-        schema_output = execute_rails_runner(<<~RUBY)
-          require 'active_record'
-          puts ActiveRecord::Base.connection.columns('#{table_name}').map{|c| [c.name, c.type, c.null, c.default].inspect}.join('\\n')
-        RUBY
+        columns = get_columns(table_name)
 
-        if schema_output.strip.empty?
+        if columns.empty?
           message = "Table '#{table_name}' not found or has no columns."
           log(:warn, message)
           return message
         end
 
-        columns = schema_output.strip.split("\\n").map do |column_info|
-          eval(column_info) # rubocop:disable Security/Eval
-        end
-
-        formatted_columns = columns.map do |name, type, nullable, default|
-          "  #{name} (#{type})#{", nullable" if nullable}#{", default: #{default}" if default}"
+        formatted_columns = columns.map do |col|
+          line = "  #{col[:name]} (#{col[:type]})"
+          line += ", nullable" if col[:null]
+          line += ", default: #{col[:default]}" if col[:default]
+          line
         end
 
         output = <<~SCHEMA
@@ -142,38 +161,63 @@ module RailsMcpServer
       end
 
       def get_table_names
-        tables_output = execute_rails_runner(<<~RUBY)
-          require 'active_record'
-          puts ActiveRecord::Base.connection.tables.sort.join('\\n')
+        output = execute_rails_runner(<<~RUBY)
+          puts ActiveRecord::Base.connection.tables.sort.join("\\n")
         RUBY
-        tables_output.strip.split("\n").reject(&:empty?)
+
+        parse_lines(output)
       end
 
       def get_column_count(table_name)
-        count_output = execute_rails_runner(<<~RUBY)
-          require 'active_record'
-          puts ActiveRecord::Base.connection.columns('#{table_name}').size
+        return "?" unless PathValidator.valid_table_name?(table_name)
+
+        output = execute_rails_runner(<<~RUBY)
+          puts ActiveRecord::Base.connection.columns(#{table_name.inspect}).size
         RUBY
-        count_output.strip.to_i
+
+        output.strip.to_i
       rescue
         "?"
       end
 
-      def get_foreign_keys(table_name)
-        fk_output = execute_rails_runner(<<~RUBY)
-          require 'active_record'
-          puts ActiveRecord::Base.connection.foreign_keys('#{table_name}').map{|fk| [fk.from_table, fk.to_table, fk.column, fk.primary_key].inspect}.join('\\n')
+      def get_columns(table_name)
+        output = execute_rails_runner(<<~RUBY)
+          ActiveRecord::Base.connection.columns(#{table_name.inspect}).each do |c|
+            puts [c.name, c.type, c.null, c.default].join("\\t")
+          end
         RUBY
 
-        return nil if fk_output.strip.empty?
+        parse_lines(output).map do |line|
+          parts = line.split(FIELD_SEPARATOR)
+          next if parts.size < 3
 
-        foreign_keys = fk_output.strip.split("\n").map do |fk_info|
-          eval(fk_info) # rubocop:disable Security/Eval
-        end
+          {
+            name: parts[0],
+            type: parts[1],
+            null: parts[2] == "true",
+            default: (parts[3] == "") ? nil : parts[3]
+          }
+        end.compact
+      end
 
-        formatted_fks = foreign_keys.map do |from_table, to_table, column, primary_key|
-          "  #{column} -> #{to_table}.#{primary_key}"
-        end
+      def get_foreign_keys(table_name)
+        output = execute_rails_runner(<<~RUBY)
+          ActiveRecord::Base.connection.foreign_keys(#{table_name.inspect}).each do |fk|
+            puts [fk.from_table, fk.to_table, fk.column, fk.primary_key].join("\\t")
+          end
+        RUBY
+
+        lines = parse_lines(output)
+        return nil if lines.empty?
+
+        formatted_fks = lines.map do |line|
+          parts = line.split(FIELD_SEPARATOR)
+          next if parts.size < 4
+
+          "  #{parts[2]} -> #{parts[1]}.#{parts[3]}"
+        end.compact
+
+        return nil if formatted_fks.empty?
 
         <<~FK
 
@@ -186,21 +230,26 @@ module RailsMcpServer
       end
 
       def get_indexes(table_name)
-        idx_output = execute_rails_runner(<<~RUBY)
-          require 'active_record'
-          puts ActiveRecord::Base.connection.indexes('#{table_name}').map{|i| [i.name, i.columns, i.unique].inspect}.join('\\n')
+        output = execute_rails_runner(<<~RUBY)
+          ActiveRecord::Base.connection.indexes(#{table_name.inspect}).each do |i|
+            cols = i.columns.is_a?(Array) ? i.columns.join(",") : i.columns
+            puts [i.name, cols, i.unique].join("\\t")
+          end
         RUBY
 
-        return nil if idx_output.strip.empty?
+        lines = parse_lines(output)
+        return nil if lines.empty?
 
-        indexes = idx_output.strip.split("\n").map do |idx_info|
-          eval(idx_info) # rubocop:disable Security/Eval
-        end
+        formatted_indexes = lines.map do |line|
+          parts = line.split(FIELD_SEPARATOR)
+          next if parts.size < 3
 
-        formatted_indexes = indexes.map do |name, columns, unique|
-          cols = columns.is_a?(Array) ? columns.join(", ") : columns
-          "  #{name} (#{cols})#{" UNIQUE" if unique}"
-        end
+          cols = parts[1].tr(",", ", ")
+          unique_marker = (parts[2] == "true") ? " UNIQUE" : ""
+          "  #{parts[0]} (#{cols})#{unique_marker}"
+        end.compact
+
+        return nil if formatted_indexes.empty?
 
         <<~IDX
 
@@ -210,6 +259,10 @@ module RailsMcpServer
       rescue => e
         log(:warn, "Error fetching indexes: #{e.message}")
         nil
+      end
+
+      def parse_lines(output)
+        output.to_s.lines.map(&:chomp).reject(&:empty?)
       end
     end
   end

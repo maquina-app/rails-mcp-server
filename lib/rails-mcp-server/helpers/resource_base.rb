@@ -27,7 +27,7 @@ module RailsMcpServer
 
     def load_manifest
       @manifest = if File.exist?(@manifest_file)
-        YAML.load_file(@manifest_file)
+        YAML.safe_load_file(@manifest_file, permitted_classes: [Symbol, Time])
       else
         create_manifest
       end
@@ -70,15 +70,17 @@ module RailsMcpServer
     def find_title(content)
       lines = content.lines
 
-      # H1 header
       lines.each do |line|
-        return $1.strip if line.strip =~ /^#\s+(.+)$/
+        stripped = line.strip
+        if stripped.start_with?("# ") && stripped.length > 2
+          return stripped[2..].strip
+        end
       end
 
-      # Underlined title
       lines.each_with_index do |line, index|
         next if index >= lines.length - 1
-        return line.strip if /^=+$/.match?(lines[index + 1].strip)
+        next_line = lines[index + 1].strip
+        return line.strip if !next_line.empty? && next_line.chars.all? { |c| c == "=" }
       end
 
       nil
@@ -87,10 +89,9 @@ module RailsMcpServer
     def find_description(content)
       # Clean content
       clean = content.dup
-      clean = clean.sub(/^---\s*\n.*?\n---\s*\n/m, "") # Remove YAML frontmatter
-      clean = clean.gsub(/^#\s+.*?\n/, "") # Remove H1 headers
-      clean = clean.gsub(/^.+\n=+\s*\n/, "") # Remove underlined titles
-      clean = clean.strip.gsub(/\n+/, " ").gsub(/\s+/, " ")
+      clean = remove_yaml_frontmatter(clean)
+      clean = remove_markdown_headers(clean)
+      clean = clean.strip.tr("\n", " ").gsub(/\s+/, " ")
 
       return "" if clean.empty?
 
@@ -120,6 +121,44 @@ module RailsMcpServer
       replacements.each { |pattern, replacement| title = title.gsub(pattern, replacement) }
 
       title.strip.empty? ? "Untitled Guide" : title
+    end
+
+    def remove_yaml_frontmatter(content)
+      lines = content.lines
+      return content unless lines.first&.strip == "---"
+
+      closing_index = lines[1..].index { |l| l.strip == "---" }
+      return content unless closing_index
+
+      lines[(closing_index + 2)..].join
+    end
+
+    def remove_markdown_headers(content)
+      lines = content.lines
+      result = []
+      skip_next = false
+
+      lines.each_with_index do |line, index|
+        if skip_next
+          skip_next = false
+          next
+        end
+
+        stripped = line.strip
+        next if stripped.start_with?("# ") && stripped.length > 2
+
+        if index < lines.length - 1
+          next_stripped = lines[index + 1].strip
+          if !next_stripped.empty? && next_stripped.chars.all? { |c| c == "=" }
+            skip_next = true
+            next
+          end
+        end
+
+        result << line
+      end
+
+      result.join
     end
 
     def file_hash(file_path)

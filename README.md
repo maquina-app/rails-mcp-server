@@ -530,6 +530,10 @@ To use with an MCP client:
 2. Connect your MCP-compatible client to the server
 3. The client will be able to use the available tools to interact with your Rails projects
 
+## Security
+
+For security concerns, please see [SECURITY.md](SECURITY.md).
+
 ## License
 
 This Rails MCP server is released under the MIT License, a permissive open-source license that allows for free use, modification, distribution, and private use.

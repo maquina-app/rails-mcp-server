@@ -1,3 +1,5 @@
+require "active_support/core_ext/string/inflections"
+
 module RailsMcpServer
   module Analyzers
     class BaseAnalyzer
@@ -27,15 +29,23 @@ module RailsMcpServer
       end
 
       def camelize(string)
-        string.split("_").map(&:capitalize).join
+        string.to_s.camelize
       end
 
       def underscore(string)
-        string.gsub("::", "/")
-          .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
-          .gsub(/([a-z\d])([A-Z])/, '\1_\2')
-          .tr("-", "_")
-          .downcase
+        string.to_s.underscore
+      end
+
+      def extract_json(output)
+        return output if output.nil? || output.empty?
+
+        start_idx = output.index("{")
+        return output unless start_idx
+
+        end_idx = output.rindex("}")
+        return output unless end_idx && end_idx > start_idx
+
+        output[start_idx..end_idx]
       end
     end
   end

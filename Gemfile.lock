@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     rails-mcp-server (1.4.1)
+      activesupport (>= 7.0)
       addressable (~> 2.8)
       fast-mcp (~> 1.6.0)
       logger (~> 1.7.0)
@@ -11,6 +12,19 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
+    activesupport (8.1.1)
+      base64
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.3.1)
+      connection_pool (>= 2.2.5)
+      drb
+      i18n (>= 1.6, < 2)
+      json
+      logger (>= 1.4.2)
+      minitest (>= 5.1)
+      securerandom (>= 0.3)
+      tzinfo (~> 2.0, >= 2.0.5)
+      uri (>= 0.13.1)
     addressable (2.8.7)
       public_suffix (>= 2.0.2, < 7.0)
     ansi (1.5.0)
@@ -19,6 +33,8 @@ GEM
     bigdecimal (3.2.2)
     builder (3.3.0)
     concurrent-ruby (1.3.5)
+    connection_pool (3.0.2)
+    drb (2.2.3)
     dry-configurable (1.3.0)
       dry-core (~> 1.1)
       zeitwerk (~> 2.6)
@@ -55,6 +71,8 @@ GEM
       json (~> 2.0)
       mime-types (~> 3.4)
       rack (>= 2.0, < 4.0)
+    i18n (1.14.7)
+      concurrent-ruby (~> 1.0)
     json (2.12.2)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
@@ -83,6 +101,7 @@ GEM
     racc (1.8.1)
     rack (3.2.4)
     rainbow (3.1.1)
+    rake (13.3.1)
     regexp_parser (2.10.0)
     rubocop (1.75.8)
       json (~> 2.3)
@@ -104,6 +123,7 @@ GEM
       rubocop-ast (>= 1.38.0, < 2.0)
     ruby-progressbar (1.13.0)
     ruby2_keywords (0.0.5)
+    securerandom (0.4.1)
     standard (1.50.0)
       language_server-protocol (~> 3.17.0.2)
       lint_roller (~> 1.0)
@@ -116,13 +136,16 @@ GEM
     standard-performance (1.8.0)
       lint_roller (~> 1.1)
       rubocop-performance (~> 1.25.0)
+    tzinfo (2.0.6)
+      concurrent-ruby (~> 1.0)
     unicode-display_width (3.1.4)
       unicode-emoji (~> 4.0, >= 4.0.4)
     unicode-emoji (4.0.4)
+    uri (1.1.1)
     zeitwerk (2.7.3)
 
 PLATFORMS
-  arm64-darwin-24
+  arm64-darwin
   ruby
 
 DEPENDENCIES
@@ -130,6 +153,7 @@ DEPENDENCIES
   minitest-reporters (~> 1.7)
   mocha (~> 2.7)
   rails-mcp-server!
+  rake
   standard
 
 BUNDLED WITH
