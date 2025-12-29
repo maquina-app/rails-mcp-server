@@ -30,6 +30,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New: `execute_tool("load_guide", { library: "rails", guide: "active_record" })`
   - The `library` parameter specifies the guide source: 'rails', 'turbo', 'stimulus', 'kamal', or 'custom'
 
+### Fixed
+
+- **execute_tool params schema**: Added `.hash` type to `params` argument so it appears in the JSON schema sent to MCP clients. Previously, tools requiring parameters (like `load_guide` with `library`) could not receive them because the `params` field was missing from the schema.
+- **Test suite stability**: Fixed ConfigTest teardown to restore a fresh Config instance instead of setting it to nil, which was causing subsequent tests to fail with `NoMethodError: undefined method 'current_project=' for nil`
+
+### Security
+
+- **Input validation hardening** (PR #25): Comprehensive security audit addressing CodeQL findings
+  - New `PathValidator` module centralizing all input sanitization
+  - Path traversal prevention: validates paths stay within project root
+  - Sensitive file protection: blocks access to `master.key`, `credentials.yml.enc`, `.env` files, `database.yml`
+  - Shell injection prevention: uses `IO.popen` with array arguments instead of shell interpolation
+  - SQL/code injection prevention in `get_schema`: strict alphanumeric validation for table names
+  - ReDoS fixes: replaced vulnerable regex patterns with linear-time string operations
+  - Safe YAML loading: replaced `YAML.load_file` with `YAML.safe_load_file` to prevent arbitrary object deserialization
+- **CI Security Infrastructure**:
+  - Dependabot for automated dependency updates
+  - CodeQL static analysis for vulnerability detection
+  - OpenSSF Scorecard for security best practices tracking
+  - SECURITY.md vulnerability disclosure policy
+
+### Technical
+
+- **Rails runner improvements**: Better handling of log pollution in JSON output, rbenv version selection from project's `.ruby-version`
+- **Test coverage**: 27 new tests for PathValidator security validations
+
 ## [1.4.1] - 2025-12-11
 
 ### Fixed
