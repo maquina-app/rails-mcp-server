@@ -28,8 +28,8 @@ module RailsMcpServer
 
         model_files = Dir.glob(File.join(models_dir, "**", "*.rb"))
           .map { |f| f.sub("#{models_dir}/", "").sub(/\.rb$/, "") }
-          .reject { |f| f.include?("concern") || f.include?("application_record") }
-          .sort
+          .reject { |f| f.include?("concern") || f.include?("application_record") } # rubocop:disable Performance/ChainArrayAllocation
+          .sort # rubocop:disable Performance/ChainArrayAllocation
 
         case detail_level
         when "names"
@@ -54,7 +54,16 @@ module RailsMcpServer
 
       def single_model_info(model_name, detail_level, analysis_type)
         model_file = find_model_file(model_name)
-        return "Model '#{model_name}' not found." unless model_file && File.exist?(model_file)
+        unless model_file && File.exist?(model_file)
+          return <<~ERROR
+            Model '#{model_name}' not found.
+
+            Tips:
+            - Use CamelCase: 'User', 'BlogPost', 'OrderItem'
+            - Use singular form: 'User' not 'Users'
+            - Run analyze_models without params to list all models
+          ERROR
+        end
 
         case detail_level
         when "names"

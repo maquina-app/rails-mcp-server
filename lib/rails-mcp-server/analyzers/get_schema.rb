@@ -120,9 +120,14 @@ module RailsMcpServer
         columns = get_columns(table_name)
 
         if columns.empty?
-          message = "Table '#{table_name}' not found or has no columns."
-          log(:warn, message)
-          return message
+          log(:warn, "Table '#{table_name}' not found or has no columns.")
+          return <<~ERROR
+            Table '#{table_name}' not found or has no columns.
+
+            Tips:
+            - Use snake_case plural: 'users', 'blog_posts', 'order_items'
+            - Run get_schema with detail_level: "tables" to list all tables
+          ERROR
         end
 
         formatted_columns = columns.map do |col|

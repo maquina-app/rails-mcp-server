@@ -16,7 +16,8 @@ class ExecuteToolTest < Minitest::Test
     result = @tool.call(tool_name: "nonexistent")
 
     assert_includes result, "Unknown tool"
-    assert_includes result, "Available:"
+    assert_includes result, "Available tools:"
+    assert_includes result, "search_tools"
   end
 
   def test_available_tools_list

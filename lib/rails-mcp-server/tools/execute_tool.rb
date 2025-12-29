@@ -13,7 +13,7 @@ module RailsMcpServer
       required(:tool_name).filled(:string).description(
         "Name of the analyzer to execute (e.g., 'get_routes', 'analyze_models', 'get_schema')"
       )
-      optional(:params).description(
+      optional(:params).hash.description(
         "Hash of parameters to pass to the analyzer (e.g., { model_name: 'User', analysis_type: 'full' })"
       )
     end
@@ -54,7 +54,7 @@ module RailsMcpServer
       },
       "load_guide" => {
         class_name: "Analyzers::LoadGuide",
-        params: [:guides, :guide]
+        params: [:library, :guide]
       }
     }.freeze
 
@@ -63,7 +63,13 @@ module RailsMcpServer
 
       unless tool_config
         available = INTERNAL_TOOLS.keys.sort.join(", ")
-        return "Unknown tool '#{tool_name}'. Available: #{available}\n\nUse search_tools to discover tools and their parameters."
+        return <<~ERROR
+          Unknown tool '#{tool_name}'.
+
+          Available tools: #{available}
+
+          Tip: Use search_tools(query: "keyword") to discover tools and their parameters.
+        ERROR
       end
 
       # Get the analyzer class from the Analyzers module

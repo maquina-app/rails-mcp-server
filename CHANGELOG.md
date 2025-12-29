@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-12-19
+
+### Added
+
+- **GitHub Copilot Agent Support**: Full compatibility with GitHub Copilot coding agent
+  - New `--single-project` flag to use current directory as the only project
+  - New `RAILS_MCP_PROJECT_PATH` environment variable for explicit project path configuration
+  - Auto-detection of Rails applications from Gemfile (`gem "rails"`)
+  - Auto-detection of Rails engines from gemspec files (dependencies on `rails`, `railties`, `actionpack`, `activerecord`, etc.)
+  - Auto-switch to single project when only one project is configured in `projects.yml`
+- **Documentation**: New `docs/COPILOT_AGENT.md` with comprehensive setup guide for GitHub Copilot Agent
+
+### Changed
+
+- **Project Detection Priority**: Projects are now detected in this order:
+  1. `RAILS_MCP_PROJECT_PATH` environment variable (highest priority)
+  2. Auto-detection of Rails application from Gemfile in current directory
+  3. Auto-detection of Rails engine from gemspec in current directory
+  4. `projects.yml` configuration file (existing behavior)
+- **Error Messages**: Improved error message when no projects found to suggest running from a Rails directory
+- **load_guide Parameter Rename**: Renamed `guides` parameter to `library` for clarity
+  - Old: `execute_tool("load_guide", { guides: "rails", guide: "active_record" })`
+  - New: `execute_tool("load_guide", { library: "rails", guide: "active_record" })`
+  - The `library` parameter specifies the guide source: 'rails', 'turbo', 'stimulus', 'kamal', or 'custom'
+
+### Fixed
+
+- **execute_tool params schema**: Added `.hash` type to `params` argument so it appears in the JSON schema sent to MCP clients. Previously, tools requiring parameters (like `load_guide` with `library`) could not receive them because the `params` field was missing from the schema.
+- **Test suite stability**: Fixed ConfigTest teardown to restore a fresh Config instance instead of setting it to nil, which was causing subsequent tests to fail with `NoMethodError: undefined method 'current_project=' for nil`
+- **Rails 8.1.1 compatibility**: Fixed `analyze_controller_views` callback introspection that failed with "undefined method 'options'" error. Now uses `respond_to?(:options)` to maintain backward compatibility with both Rails 8.1+ and earlier versions.
+- **load_guide input validation**: Added validation to prevent path traversal and special characters in guide names. Guide names must now use only letters, numbers, underscores, hyphens, or forward slashes.
+- **Improved error messages**: Better error messages for unknown tools, missing models, and missing tables with helpful tips (e.g., use CamelCase for models, snake_case plural for tables)
+
+### Security
+
+- **Input validation hardening** (PR #25): Comprehensive security audit addressing CodeQL findings
+  - New `PathValidator` module centralizing all input sanitization
+  - Path traversal prevention: validates paths stay within project root
+  - Sensitive file protection: blocks access to `master.key`, `credentials.yml.enc`, `.env` files, `database.yml`
+  - Shell injection prevention: uses `IO.popen` with array arguments instead of shell interpolation
+  - SQL/code injection prevention in `get_schema`: strict alphanumeric validation for table names
+  - ReDoS fixes: replaced vulnerable regex patterns with linear-time string operations
+  - Safe YAML loading: replaced `YAML.load_file` with `YAML.safe_load_file` to prevent arbitrary object deserialization
+- **CI Security Infrastructure**:
+  - Dependabot for automated dependency updates
+  - CodeQL static analysis for vulnerability detection
+  - OpenSSF Scorecard for security best practices tracking
+  - SECURITY.md vulnerability disclosure policy
+
+### Technical
+
+- **Rails runner improvements**: Better handling of log pollution in JSON output, rbenv version selection from project's `.ruby-version`
+- **Test coverage**: 27 new tests for PathValidator security validations
+
 ## [1.4.1] - 2025-12-11
 
 ### Fixed

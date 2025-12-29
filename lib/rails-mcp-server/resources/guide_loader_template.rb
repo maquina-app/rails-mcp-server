@@ -78,7 +78,7 @@ module RailsMcpServer
       guides = []
 
       guides << "# Available #{framework_name} Guides\n"
-      guides << "Use the `load_guide` tool with `guides: \"#{framework_name.downcase}\"` and `guide: \"guide_name\"` to load a specific guide.\n"
+      guides << "Use `execute_tool(\"load_guide\", { library: \"#{framework_name.downcase}\", guide: \"guide_name\" })` to load a specific guide.\n"
 
       if supports_sections?
         guides << "You can use either the full path (e.g., `handbook/01_introduction`) or just the filename (e.g., `01_introduction`).\n"
