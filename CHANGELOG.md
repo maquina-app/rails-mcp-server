@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **execute_tool params schema**: Added `.hash` type to `params` argument so it appears in the JSON schema sent to MCP clients. Previously, tools requiring parameters (like `load_guide` with `library`) could not receive them because the `params` field was missing from the schema.
 - **Test suite stability**: Fixed ConfigTest teardown to restore a fresh Config instance instead of setting it to nil, which was causing subsequent tests to fail with `NoMethodError: undefined method 'current_project=' for nil`
+- **Rails 8.1.1 compatibility**: Fixed `analyze_controller_views` callback introspection that failed with "undefined method 'options'" error. Now uses `respond_to?(:options)` to maintain backward compatibility with both Rails 8.1+ and earlier versions.
+- **load_guide input validation**: Added validation to prevent path traversal and special characters in guide names. Guide names must now use only letters, numbers, underscores, hyphens, or forward slashes.
+- **Improved error messages**: Better error messages for unknown tools, missing models, and missing tables with helpful tips (e.g., use CamelCase for models, snake_case plural for tables)
 
 ### Security
 

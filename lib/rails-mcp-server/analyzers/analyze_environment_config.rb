@@ -40,7 +40,7 @@ module RailsMcpServer
         end
 
         # Find inconsistencies
-        all_keys = configs.values.flat_map(&:keys).uniq.sort
+        all_keys = configs.values.flat_map(&:keys).uniq.sort # rubocop:disable Performance/ChainArrayAllocation
         inconsistencies = []
 
         all_keys.each do |key|

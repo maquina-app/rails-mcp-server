@@ -53,6 +53,16 @@ module RailsMcpServer
       end
 
       def load_specific_guide(guides_path, guide_name)
+        # Validate guide name format - allow letters, numbers, underscores, hyphens, and forward slashes
+        unless guide_name.to_s.match?(/\A[a-zA-Z0-9_\-\/]+\z/)
+          return "Invalid guide name '#{guide_name}'. Use letters, numbers, underscores, hyphens, or forward slashes only."
+        end
+
+        # Prevent directory traversal
+        if guide_name.to_s.include?("..") || guide_name.to_s.start_with?("/")
+          return "Invalid guide name '#{guide_name}'. Directory traversal is not allowed."
+        end
+
         # Try exact match first
         guide_file = File.join(guides_path, "#{guide_name}.md")
 

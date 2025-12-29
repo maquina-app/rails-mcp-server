@@ -2,6 +2,32 @@
 
 This guide helps AI agents (Claude, GPT, etc.) use the Rails MCP Server effectively. It covers tool selection, common patterns, and troubleshooting.
 
+## Architecture Overview
+
+Rails MCP Server uses a **progressive tool discovery** pattern to minimize context usage:
+
+```
+MCP Client (Claude, etc.)
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│  4 MCP-Registered Tools                     │
+│  ┌─────────────┐  ┌─────────────────────┐   │
+│  │switch_project│  │search_tools        │   │
+│  └─────────────┘  └─────────────────────┘   │
+│  ┌─────────────┐  ┌─────────────────────┐   │
+│  │execute_tool │──▶│ 9 Internal Analyzers│   │
+│  └─────────────┘  └─────────────────────┘   │
+│  ┌─────────────┐                            │
+│  │execute_ruby │                            │
+│  └─────────────┘                            │
+└─────────────────────────────────────────────┘
+```
+
+**Key concept:** Only 4 tools are registered with MCP. The 9 internal analyzers (`analyze_models`, `get_routes`, etc.) are discovered via `search_tools` and invoked via `execute_tool`.
+
+---
+
 ## Quick Start
 
 **Always start with these two steps:**
@@ -217,6 +243,27 @@ railsMcpServer:execute_ruby code: "puts read_file('Gemfile')"
 
 ---
 
+## Analyzer Parameter Quick Reference
+
+| Analyzer | Required | Optional |
+|----------|----------|----------|
+| `project_info` | - | `max_depth`, `include_files`, `detail_level` |
+| `list_files` | - | `directory`, `pattern` |
+| `get_file` | `path` | - |
+| `get_routes` | - | `controller`, `verb`, `path_contains`, `named_only`, `detail_level` |
+| `analyze_models` | - | `model_name`, `model_names`, `detail_level`, `analysis_type` |
+| `get_schema` | - | `table_name`, `table_names`, `detail_level` |
+| `analyze_controller_views` | - | `controller_name`, `detail_level`, `analysis_type` |
+| `analyze_environment_config` | - | (none) |
+| `load_guide` | `library` | `guide` |
+
+**Common parameter values:**
+- `detail_level`: `"names"`, `"summary"`, `"full"`
+- `analysis_type`: `"introspection"`, `"static"`, `"full"`
+- `library` (for load_guide): `"rails"`, `"turbo"`, `"stimulus"`, `"kamal"`, `"custom"`
+
+---
+
 ## Rails MCP vs Claude Built-in Tools
 
 | Task | Use This | NOT This |
@@ -260,6 +307,34 @@ railsMcpServer:execute_ruby code: "puts Dir.glob('app/views/transactions/**/*').
 
 ---
 
+## Decision Tree: Which Tool Should I Use?
+
+```
+What do you need to do?
+│
+├─► Read/analyze code?
+│   ├─► Single file? ──────────► execute_ruby with read_file()
+│   ├─► Model info? ───────────► analyze_models (params: model_name)
+│   ├─► Controller info? ──────► analyze_controller_views (params: controller_name)
+│   └─► Multiple files? ───────► execute_ruby with Dir.glob()
+│
+├─► Database info?
+│   ├─► Table structure? ──────► get_schema (params: table_name)
+│   └─► List all tables? ──────► get_schema (params: detail_level: "tables")
+│
+├─► Routing info?
+│   ├─► All routes? ───────────► get_routes
+│   └─► Filtered routes? ──────► get_routes (params: controller, verb, path_contains)
+│
+├─► Project overview? ─────────► project_info
+│
+├─► Documentation? ────────────► load_guide (params: library, guide)
+│
+└─► Custom Ruby code? ─────────► execute_ruby
+```
+
+---
+
 ## Common Pitfalls
 
 ### ❌ Don't
@@ -268,6 +343,8 @@ railsMcpServer:execute_ruby code: "puts Dir.glob('app/views/transactions/**/*').
 - Forget `puts` in `execute_ruby` calls
 - Use absolute paths (always use paths relative to project root)
 - Skip `switch_project` before using other tools
+- Use `users` (plural) for model names - use `User` (singular CamelCase)
+- Use `User` for table names - use `users` (plural snake_case)
 
 ### ✅ Do
 
@@ -276,6 +353,8 @@ railsMcpServer:execute_ruby code: "puts Dir.glob('app/views/transactions/**/*').
 - Use `puts` to output results in `execute_ruby`
 - Fall back to `execute_ruby` when specialized tools fail
 - Use `search_tools` when unsure what's available
+- Use CamelCase singular for models: `User`, `BlogPost`, `OrderItem`
+- Use snake_case plural for tables: `users`, `blog_posts`, `order_items`
 
 ---
 

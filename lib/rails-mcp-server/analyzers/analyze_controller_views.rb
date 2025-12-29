@@ -119,7 +119,14 @@ module RailsMcpServer
             result = {
               actions: c.action_methods.to_a.sort,
               parent: c.superclass.name,
-              callbacks: c._process_action_callbacks.map { |cb| { kind: cb.kind.to_s, filter: cb.filter.to_s, only: Array(cb.options[:only]).map(&:to_s), except: Array(cb.options[:except]).map(&:to_s) } },
+              callbacks: c._process_action_callbacks.map { |cb|
+              h = { kind: cb.kind.to_s, filter: cb.filter.to_s }
+              if cb.respond_to?(:options)
+                h[:only] = Array(cb.options[:only]).map(&:to_s)
+                h[:except] = Array(cb.options[:except]).map(&:to_s)
+              end
+              h
+            },
               routes: Rails.application.routes.routes.select { |r| r.defaults[:controller] == '#{controller_class.sub("Controller", "").underscore}' }
                 .map { |r| { name: r.name.to_s, verb: r.verb.to_s.gsub(/[\\^$\\/]/, ''), path: r.path.spec.to_s.gsub('(.:format)', ''), action: r.defaults[:action].to_s } }
             }
