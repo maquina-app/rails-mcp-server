@@ -28,8 +28,8 @@ class ConfigTest < Minitest::Test
     ENV.clear
     @original_env.each { |k, v| ENV[k] = v }
 
-    # Reset the singleton config
-    RailsMcpServer.instance_variable_set(:@config, nil)
+    # Reset the singleton config to a fresh instance (not nil!)
+    RailsMcpServer.instance_variable_set(:@config, RailsMcpServer::Config.setup)
   end
 
   def test_env_var_mode_takes_priority

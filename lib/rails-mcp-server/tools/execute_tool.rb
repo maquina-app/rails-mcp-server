@@ -13,7 +13,7 @@ module RailsMcpServer
       required(:tool_name).filled(:string).description(
         "Name of the analyzer to execute (e.g., 'get_routes', 'analyze_models', 'get_schema')"
       )
-      optional(:params).description(
+      optional(:params).hash.description(
         "Hash of parameters to pass to the analyzer (e.g., { model_name: 'User', analysis_type: 'full' })"
       )
     end
