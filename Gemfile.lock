@@ -81,7 +81,8 @@ GEM
       logger
       mime-types-data (~> 3.2025, >= 3.2025.0507)
     mime-types-data (3.2025.0603)
-    minitest (5.26.2)
+    minitest (6.0.0)
+      prism (~> 1.5)
     minitest-reporters (1.7.1)
       ansi
       builder
@@ -94,7 +95,7 @@ GEM
     parser (3.3.8.0)
       ast (~> 2.4.1)
       racc
-    prism (1.4.0)
+    prism (1.7.0)
     public_suffix (6.0.2)
     puma (7.1.0)
       nio4r (~> 2.0)
@@ -149,7 +150,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  minitest (~> 5.25)
+  minitest (~> 6.0)
   minitest-reporters (~> 1.7)
   mocha (~> 2.7)
   rails-mcp-server!
