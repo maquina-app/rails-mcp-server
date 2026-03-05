@@ -25,9 +25,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency "activesupport", ">= 7.0"
   spec.add_dependency "addressable", "~> 2.8"
   spec.add_dependency "fast-mcp", "~> 1.6.0"
-  spec.add_dependency "rack", "~> 3.2.0"
-  spec.add_dependency "puma", "~> 7.1.0"
-  spec.add_dependency "logger", "~> 1.7.0"
+  spec.add_dependency "rack", "~> 3.2"
+  spec.add_dependency "puma", "~> 7.1"
+  spec.add_dependency "logger", "~> 1.7"
 
   spec.add_development_dependency "rake"
   spec.add_development_dependency "standard"
