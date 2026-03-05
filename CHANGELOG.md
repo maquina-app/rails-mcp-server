@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-03-04
+
+### Changed
+
+- **Relaxed dependency version constraints**: Loosened minor version locks in gemspec (`logger ~> 1.7`, `puma ~> 7.1`, `rack ~> 3.2`) to allow compatible patch updates without requiring a gem release
+- **Updated dependencies**: Bumped Gemfile.lock with latest compatible versions of all dependencies
+
 ## [1.5.0] - 2025-12-19
 
 ### Added
@@ -316,6 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.5.1** (2026-03-04): Relaxed dependency version constraints for better compatibility
 - **v1.4.0** (2025-12-10): Context-efficient architecture with progressive tool discovery (67% token reduction)
 - **v1.2.3** (2025-12-10): Setup script fix for readonly filesystems (NixOS compatibility)
 - **v1.2.2** (2025-07-21): Network access support with --bind-all flag
