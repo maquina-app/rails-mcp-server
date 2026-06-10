@@ -604,6 +604,8 @@ To use with an MCP client:
 2. Connect your MCP-compatible client to the server
 3. The client will be able to use the available tools to interact with your Rails projects
 
+For teams using a governed AI client or control plane for tool access, approvals, audit trails, and cost reporting, see [Governed MCP Clients](docs/GOVERNED_CLIENTS.md).
+
 ## Security
 
 For security concerns, please see [SECURITY.md](SECURITY.md).
