@@ -1,5 +1,7 @@
 # Rails MCP Server
 
+[![MCP Toplist](https://mcptoplist.com/badge/mcp.so%2Frails-mcp-server%2Fmaquina-app.svg)](https://mcptoplist.com/server/mcp.so%2Frails-mcp-server%2Fmaquina-app)
+
 A Ruby implementation of a Model Context Protocol (MCP) server for Rails projects. This server allows LLMs (Large Language Models) to interact with Rails projects through the Model Context Protocol, providing capabilities for code analysis, exploration, and development assistance.
 
 ## What is MCP?
