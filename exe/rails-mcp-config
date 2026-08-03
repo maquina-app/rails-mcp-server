@@ -219,8 +219,8 @@ module RailsMcpConfig
         print Colors.mauve(Colors.bold("#{prompt} "))
         print Colors.dim("[#{default_value}] ") unless default_value.empty?
         result = gets&.strip
-        return default_value if result&.empty? && !default_value.empty?
-        result&.empty? ? nil : result
+        return default_value if result == "" && !default_value.empty?
+        (result == "") ? nil : result
       end
     end
 
