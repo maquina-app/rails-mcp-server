@@ -87,6 +87,56 @@ class AnalyzeModelsTest < AnalyzerTestCase
     assert_includes result, "Model: Post"
   end
 
+  def test_namespaced_model_resolves_via_colon_form
+    result = @analyzer.call(model_name: "Base::FundHolding", detail_level: "names")
+
+    assert_includes result, "Model: Base::FundHolding"
+    assert_includes result, "app/models/base/fund_holding.rb"
+  end
+
+  def test_namespaced_model_resolves_via_path_form
+    result = @analyzer.call(model_name: "base/fund_holding", detail_level: "names")
+
+    assert_includes result, "Model: Base::FundHolding"
+    assert_includes result, "app/models/base/fund_holding.rb"
+  end
+
+  def test_namespaced_model_resolves_via_flattened_form
+    result = @analyzer.call(model_name: "BaseFundHolding", detail_level: "names")
+
+    assert_includes result, "Model: Base::FundHolding"
+    assert_includes result, "app/models/base/fund_holding.rb"
+  end
+
+  def test_namespaced_model_resolves_via_leaf_form
+    result = @analyzer.call(model_name: "FundHolding", detail_level: "names")
+
+    assert_includes result, "Model: Base::FundHolding"
+    assert_includes result, "app/models/base/fund_holding.rb"
+  end
+
+  def test_introspection_script_uses_canonical_constant_not_raw_input
+    # Regardless of which input form is used, the runner script must reference a
+    # valid Ruby constant (via const_get), never the raw path/flattened input.
+    %w[Base::FundHolding base/fund_holding BaseFundHolding].each do |input|
+      model_file = @analyzer.send(:find_model_file, input)
+      class_name = @analyzer.send(:model_class_name, model_file)
+      script = @analyzer.send(:build_introspection_script, class_name)
+
+      assert_includes script, %(Object.const_get("Base::FundHolding"))
+      refute_includes script, "model = base/fund_holding"
+      refute_includes script, "model = BaseFundHolding"
+    end
+  end
+
+  def test_introspection_script_escapes_constant_for_injection_safety
+    # The constant is derived from the resolved file path and interpolated with
+    # #inspect, so it can never break out of the string literal.
+    script = @analyzer.send(:build_introspection_script, %(Foo"; system("x"); "))
+
+    refute_includes script, %(system("x"))
+  end
+
   def test_no_project_selected
     teardown_sample_project
 
