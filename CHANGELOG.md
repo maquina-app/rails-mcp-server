@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dropped Ruby 3.2 support** (breaking): The minimum supported Ruby is now 3.3 (`required_ruby_version >= 3.3.0`), and the CI matrix tests Ruby 3.3 and 3.4. Dependency updates pull in transitive gems (`dry-configurable` 1.4.0, `parallel` 2.1.0) that require Ruby >= 3.3.
+- **Dependency updates**: Bumped project dependencies, including major upgrades to `puma` (~> 8.0), `minitest` (~> 6.0) and `mocha` (~> 3.0), plus `activesupport` 8.1.3.1, `addressable` 2.9.0, `rubocop` 1.88.2, `standard` 1.56.0 and other transitive gems.
+- **Deterministic linting**: Added `.standard.yml` pinning `ruby_version: 3.3` to match the gemspec's minimum supported Ruby, so Standard/RuboCop target the supported floor regardless of the local or CI Ruby.
+
 ### Fixed
 
 - **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
+
+### Security
+
+- **Puma advisories resolved**: Upgrading to `puma` 8.0.2 addresses CVE-2026-47736 and CVE-2026-47737 (both HIGH — PROXY Protocol v1 remote memory exhaustion and repeated-header handling). Dependency updates also clear the `concurrent-ruby` ReadWriteLock advisory (GHSA-6wx8-w4f5-wwcr). `bundler-audit` now reports no vulnerabilities.
 
 ## [1.5.1] - 2026-03-04
 
