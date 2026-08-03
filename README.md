@@ -207,9 +207,11 @@ After running the script, restart Claude Desktop to apply the changes.
 
 ### Ruby Version Manager Users
 
-Claude Desktop launches the MCP server using your system's default Ruby environment, bypassing version manager initialization (e.g., rbenv, RVM). The MCP server needs to use the same Ruby version where it was installed, as MCP server startup failures can occur when using an incompatible Ruby version.
+Two different Rubies are involved, and the server handles them differently.
 
-If you are using a Ruby version manager such as rbenv, you can use the Ruby shim path to ensure the correct version is used:
+#### 1. The Ruby that runs the MCP server
+
+Your MCP client (e.g. Claude Desktop) launches the server using your system's default Ruby, bypassing version-manager initialization. The server must run on the Ruby where its gem is installed, or startup fails. Point the client's `command` at that Ruby's absolute path — for a version manager, its shim works:
 
 ```json
 {
@@ -222,9 +224,15 @@ If you are using a Ruby version manager such as rbenv, you can use the Ruby shim
 }
 ```
 
-Replace "/home/your_user/.rbenv/shims/ruby" with your actual path for the Ruby shim.
+Replace `/home/your_user/.rbenv/shims/ruby` with your actual Ruby path (an rbenv/mise/asdf shim, or your `rvm`/`chruby` Ruby).
 
-**Tip**: The `rails-mcp-config` tool automatically detects your Ruby path and uses the correct shim path when configuring Claude Desktop.
+**Tip**: The `rails-mcp-config` tool detects this Ruby automatically (via `RbConfig.ruby`) and writes the correct absolute path when configuring Claude Desktop.
+
+#### 2. The Ruby used to introspect each Rails project
+
+Tools that boot your app — `execute_ruby`, `get_schema`, and the introspection half of `analyze_models` / `analyze_controller_views` — run `bin/rails` inside the project directory. The server selects the **project's** Ruby automatically and is agnostic to your version manager: it prepends the active manager's shims (**mise**, **asdf**, **rbenv**) to the subprocess `PATH` and sources **rvm** when present, then uses a non-login shell so macOS `path_helper` cannot substitute the system Ruby. The version is taken from the project's `.ruby-version` / `.tool-versions` / `.mise.toml`, so different projects can use different Rubies with no extra configuration.
+
+> No manual `PATH` workaround is needed. Previously these tools could fall back to the system Ruby on mise/asdf machines, where the app's Bundler then failed to boot.
 
 ### Using an MCP Proxy (Advanced)
 

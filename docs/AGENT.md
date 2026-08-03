@@ -400,6 +400,14 @@ railsMcpServer:execute_ruby code: "User.count"
 railsMcpServer:execute_ruby code: "puts User.count"
 ```
 
+### `execute_ruby` / `get_schema` fail to boot the app (Bundler / wrong Ruby)
+
+These tools run the project's `bin/rails`. The server auto-selects the project's Ruby via your version manager's shims (**mise**, **asdf**, **rbenv**; **rvm** is sourced), reading `.ruby-version` / `.tool-versions` / `.mise.toml`. If they still fail with a Bundler or boot error:
+
+1. Confirm the project has a `.ruby-version` (or `.tool-versions` / `.mise.toml`) and that Ruby is installed in your manager.
+2. Confirm your manager is one of mise, asdf, rbenv, or rvm — these are auto-detected.
+3. The underlying boot error is included in the tool output (no longer suppressed), so read it for the specific cause.
+
 ---
 
 ## Integration with Neovim MCP
