@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-03
+
+### Added
+
+- **Namespaced model resolution in `analyze_models`**: Module-namespaced models now resolve from every input form — `Namespace::Model`, the file path `namespace/model`, the flattened `NamespaceModel`, and the bare leaf `Model` — independent of the app's custom inflections. Previously namespaced models could be reported as "not found".
+
 ### Fixed
 
+- **Ruby version manager resolution in `execute_ruby` / Rails runner**: Commands executed through a login but non-interactive shell (`shell -l -c`) no longer fall back to the system Ruby. rbenv, rvm, mise and asdf are activated from interactive shell rc files that such a shell never sources; the server now prepends each installed manager's shim directory to `PATH` (and sources rvm) so the project's Ruby is used.
+- **`analyze_models` introspection constant**: The introspection runner now derives the canonical constant from the resolved model file (loaded via `Object.const_get`) instead of interpolating the raw user input. This fixes invalid-Ruby / `NameError` failures for path and flattened inputs, degrades non-ActiveRecord constants to a clear message, and removes an unvalidated-input injection surface in the generated runner scripts.
 - **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
+
+### Changed
+
+- **Dependency updates**: Bumped project dependencies, including major upgrades to `puma` (~> 8.0), `minitest` (~> 6.0) and `mocha` (~> 3.0), plus `activesupport` 8.1.3.1, `addressable` 2.9.0, `rubocop` 1.88.2, `standard` 1.56.0 and other transitive gems.
+- **Deterministic linting**: Added `.standard.yml` pinning `ruby_version: 3.2` to match the gemspec's minimum supported Ruby, so Standard/RuboCop target the supported floor regardless of the local or CI Ruby.
+
+### Security
+
+- **Puma advisories resolved**: Upgrading to `puma` 8.0.2 addresses CVE-2026-47736 and CVE-2026-47737 (both HIGH — PROXY Protocol v1 remote memory exhaustion and repeated-header handling). Dependency updates also clear the `concurrent-ruby` ReadWriteLock advisory (GHSA-6wx8-w4f5-wwcr). `bundler-audit` now reports no vulnerabilities.
 
 ## [1.5.1] - 2026-03-04
 
