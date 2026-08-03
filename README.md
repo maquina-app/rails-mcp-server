@@ -418,6 +418,7 @@ After switching, you'll see a Quick Start guide with common commands.
 
 - `code`: (String, required) Ruby code to execute
 - `timeout`: (Integer, optional) Timeout in seconds (default: 30, max: 60)
+- `confirm_risky`: (Boolean, optional) Set `true` only after you have explicitly approved code that uses dual-use constructs (`send`, `public_send`, `const_get`, `Kernel#open`). When false/absent, such code is not executed — the tool returns a `CONFIRMATION REQUIRED` message explaining the risk instead.
 
 **Available helper methods:**
 
@@ -428,7 +429,16 @@ After switching, you'll see a Quick Start guide with common commands.
 
 **Note:** Use `puts` to see output from your code.
 
-**Security:** The sandbox prevents file writes, system calls, network access, and reading sensitive files (.env, credentials, etc.). File reads are limited to the project directory, plus read-only system timezone data (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`.
+**Security:** The sandbox is intended for read-only exploration and applies several layers of defense:
+
+- **No writes / shell / network:** file writes, `system`/`exec`/backticks, and network libraries are blocked by both static analysis and runtime overrides.
+- **Confined file reads:** reads are limited to the project directory (via all of `File`/`IO` `read`/`readlines`/`binread`/`foreach` and `File.open`), plus a small allowlist of read-only system timezone paths (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`. Paths are symlink-resolved (`realpath`) so a link inside the project cannot point outside it.
+- **No sensitive files:** `.env`, credentials, keys, and any `.gitignore`d path are refused.
+- **Database writes are rolled back:** user code runs inside a transaction that is always rolled back, so `delete_all`, `update`, `save`, and raw DML are undone. Treat the tool as read-only for data too. (Caveat: DDL may still commit on some adapters such as MySQL, and `after_commit` callbacks do not fire.)
+- **Bounded execution:** a timeout (default 30s, max 60s) kills the whole process group, so a runaway `bin/rails runner` is terminated rather than orphaned.
+- **Confirmation for dual-use constructs:** `send`, `public_send`, `const_get`, and `Kernel#open` are not run until you approve them via `confirm_risky: true`.
+
+These controls are defense-in-depth, not a hard isolation boundary. `execute_ruby` executes real Ruby with full access to the Rails app, so only enable it for projects and clients you trust. For stronger isolation run the server against a database user with read-only grants and/or inside an OS-level sandbox (container, `sandbox-exec`, etc.).
 
 ### Internal Analyzers (via execute_tool)
 
