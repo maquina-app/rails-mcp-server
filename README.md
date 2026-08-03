@@ -420,7 +420,7 @@ After switching, you'll see a Quick Start guide with common commands.
 
 **Note:** Use `puts` to see output from your code.
 
-**Security:** The sandbox prevents file writes, system calls, network access, and reading sensitive files (.env, credentials, etc.).
+**Security:** The sandbox prevents file writes, system calls, network access, and reading sensitive files (.env, credentials, etc.). File reads are limited to the project directory, plus read-only system timezone data (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`.
 
 ### Internal Analyzers (via execute_tool)
 

@@ -11,7 +11,8 @@ module RailsMcpServer
       RESTRICTIONS:
       - Cannot create, modify, or delete files
       - Cannot read .env, credentials, key files, or .gitignore'd files
-      - Cannot access files outside the project directory
+      - Cannot access files outside the project directory (read-only system data
+        such as timezone files under /usr/share/zoneinfo is allowed)
       - Cannot execute shell commands or system calls
 
       HELPER METHODS AVAILABLE:
@@ -104,6 +105,18 @@ module RailsMcpServer
       /id_ed25519/i
     ].freeze
 
+    # Read-only system data directories the sandbox may read. TZInfo lazily
+    # loads IANA timezone data on first Time.zone use; these are its default
+    # search paths plus /var/db/timezone, the real location behind macOS's
+    # /usr/share/zoneinfo symlink. Writes remain blocked by the File/Dir/
+    # FileUtils overrides.
+    ALLOWED_READ_PATHS = %w[
+      /usr/share/zoneinfo
+      /usr/share/lib/zoneinfo
+      /etc/zoneinfo
+      /var/db/timezone
+    ].freeze
+
     NO_OUTPUT_MESSAGE = <<~MSG
       Code executed successfully (no output).
 
@@ -150,9 +163,13 @@ module RailsMcpServer
       sensitive_patterns_ruby = all_patterns.map { |p| "Regexp.new(#{p.inspect}, Regexp::IGNORECASE)" }.join(",\n      ")
 
       <<~RUBY
+        require "stringio" # the File.open override below yields StringIO objects
+
         # Sandbox wrapper for safe execution
         module McpSandbox
           PROJECT_ROOT = #{active_project_path.inspect}.freeze
+
+          ALLOWED_READ_PATHS = #{ALLOWED_READ_PATHS.inspect}.freeze
 
           SENSITIVE_PATTERNS = [
             #{sensitive_patterns_ruby}
@@ -166,6 +183,10 @@ module RailsMcpServer
 
           def validate_path!(path)
             expanded = File.expand_path(path, PROJECT_ROOT)
+
+            if ALLOWED_READ_PATHS.any? { |dir| expanded == dir || expanded.start_with?(dir + "/") }
+              return expanded
+            end
 
             unless expanded.start_with?(PROJECT_ROOT + "/") || expanded == PROJECT_ROOT
               raise PathViolation, "Access denied: path '\#{path}' is outside project directory"

@@ -60,7 +60,7 @@ Given that this MCP server executes code in Rails projects and provides file sys
 This project implements several security controls:
 
 - **Sandboxed execution**: `execute_ruby` tool runs code in a restricted environment with file/network/system call protections
-- **Path validation**: file operations are constrained to the configured Rails project directory
+- **Path validation**: file operations are constrained to the configured Rails project directory; the `execute_ruby` sandbox additionally allows read-only access to a small allowlist of system timezone data paths (e.g. `/usr/share/zoneinfo`)
 - **Project isolation**: each configured project has its own scope
 - **Dependency security**: automated updates via Dependabot, bundler-audit in CI
 - **Static analysis**: CodeQL scans on every PR and weekly
