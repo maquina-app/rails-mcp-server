@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-08-03
+
 ### Fixed
 
 - **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
