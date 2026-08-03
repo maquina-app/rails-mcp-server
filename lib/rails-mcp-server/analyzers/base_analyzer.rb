@@ -21,9 +21,12 @@ module RailsMcpServer
           f.write(script)
           f.flush
 
+          # No `2>/dev/null`: execute_rails_command captures stderr separately
+          # via Open3, keeps stdout (the JSON we parse) clean on success, and
+          # surfaces the real boot error on failure instead of a blank message.
           RailsMcpServer::RunProcess.execute_rails_command(
             active_project_path,
-            "bin/rails runner #{f.path} 2>/dev/null"
+            "bin/rails runner #{f.path}"
           )
         end
       end

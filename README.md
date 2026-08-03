@@ -207,9 +207,11 @@ After running the script, restart Claude Desktop to apply the changes.
 
 ### Ruby Version Manager Users
 
-Claude Desktop launches the MCP server using your system's default Ruby environment, bypassing version manager initialization (e.g., rbenv, RVM). The MCP server needs to use the same Ruby version where it was installed, as MCP server startup failures can occur when using an incompatible Ruby version.
+Two different Rubies are involved, and the server handles them differently.
 
-If you are using a Ruby version manager such as rbenv, you can use the Ruby shim path to ensure the correct version is used:
+#### 1. The Ruby that runs the MCP server
+
+Your MCP client (e.g. Claude Desktop) launches the server using your system's default Ruby, bypassing version-manager initialization. The server must run on the Ruby where its gem is installed, or startup fails. Point the client's `command` at that Ruby's absolute path — for a version manager, its shim works:
 
 ```json
 {
@@ -222,9 +224,15 @@ If you are using a Ruby version manager such as rbenv, you can use the Ruby shim
 }
 ```
 
-Replace "/home/your_user/.rbenv/shims/ruby" with your actual path for the Ruby shim.
+Replace `/home/your_user/.rbenv/shims/ruby` with your actual Ruby path (an rbenv/mise/asdf shim, or your `rvm`/`chruby` Ruby).
 
-**Tip**: The `rails-mcp-config` tool automatically detects your Ruby path and uses the correct shim path when configuring Claude Desktop.
+**Tip**: The `rails-mcp-config` tool detects this Ruby automatically (via `RbConfig.ruby`) and writes the correct absolute path when configuring Claude Desktop.
+
+#### 2. The Ruby used to introspect each Rails project
+
+Tools that boot your app — `execute_ruby`, `get_schema`, and the introspection half of `analyze_models` / `analyze_controller_views` — run `bin/rails` inside the project directory. The server selects the **project's** Ruby automatically and is agnostic to your version manager: it prepends the active manager's shims (**mise**, **asdf**, **rbenv**) to the subprocess `PATH` and sources **rvm** when present, then uses a non-login shell so macOS `path_helper` cannot substitute the system Ruby. The version is taken from the project's `.ruby-version` / `.tool-versions` / `.mise.toml`, so different projects can use different Rubies with no extra configuration.
+
+> No manual `PATH` workaround is needed. Previously these tools could fall back to the system Ruby on mise/asdf machines, where the app's Bundler then failed to boot.
 
 ### Using an MCP Proxy (Advanced)
 
@@ -410,6 +418,7 @@ After switching, you'll see a Quick Start guide with common commands.
 
 - `code`: (String, required) Ruby code to execute
 - `timeout`: (Integer, optional) Timeout in seconds (default: 30, max: 60)
+- `confirm_risky`: (Boolean, optional) Set `true` only after you have explicitly approved code that uses dual-use constructs (`send`, `public_send`, `const_get`, `Kernel#open`). When false/absent, such code is not executed — the tool returns a `CONFIRMATION REQUIRED` message explaining the risk instead.
 
 **Available helper methods:**
 
@@ -420,7 +429,16 @@ After switching, you'll see a Quick Start guide with common commands.
 
 **Note:** Use `puts` to see output from your code.
 
-**Security:** The sandbox prevents file writes, system calls, network access, and reading sensitive files (.env, credentials, etc.). File reads are limited to the project directory, plus read-only system timezone data (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`.
+**Security:** The sandbox is intended for read-only exploration and applies several layers of defense:
+
+- **No writes / shell / network:** file writes, `system`/`exec`/backticks, and network libraries are blocked by both static analysis and runtime overrides.
+- **Confined file reads:** reads are limited to the project directory (via all of `File`/`IO` `read`/`readlines`/`binread`/`foreach` and `File.open`), plus a small allowlist of read-only system timezone paths (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`. Paths are symlink-resolved (`realpath`) so a link inside the project cannot point outside it.
+- **No sensitive files:** `.env`, credentials, keys, and any `.gitignore`d path are refused.
+- **Database writes are rolled back:** user code runs inside a transaction that is always rolled back, so `delete_all`, `update`, `save`, and raw DML are undone. Treat the tool as read-only for data too. (Caveat: DDL may still commit on some adapters such as MySQL, and `after_commit` callbacks do not fire.)
+- **Bounded execution:** a timeout (default 30s, max 60s) kills the whole process group, so a runaway `bin/rails runner` is terminated rather than orphaned.
+- **Confirmation for dual-use constructs:** `send`, `public_send`, `const_get`, and `Kernel#open` are not run until you approve them via `confirm_risky: true`.
+
+These controls are defense-in-depth, not a hard isolation boundary. `execute_ruby` executes real Ruby with full access to the Rails app, so only enable it for projects and clients you trust. For stronger isolation run the server against a database user with read-only grants and/or inside an OS-level sandbox (container, `sandbox-exec`, etc.).
 
 ### Internal Analyzers (via execute_tool)
 

@@ -14,6 +14,9 @@ module RailsMcpServer
       - Cannot access files outside the project directory (read-only system data
         such as timezone files under /usr/share/zoneinfo is allowed)
       - Cannot execute shell commands or system calls
+      - Database writes run inside a transaction that is always rolled back, so
+        treat this as read-only for data too (note: DDL may still commit on some
+        adapters, and after_commit callbacks do not fire)
 
       HELPER METHODS AVAILABLE:
       - read_file(path) - safely read a file
@@ -22,11 +25,17 @@ module RailsMcpServer
       - project_root - returns the project root path
 
       NOTE: Use `puts` to see output, e.g., puts read_file('Gemfile')
+
+      Some dual-use constructs (Kernel#open, send, public_send, const_get) are
+      not run immediately: the tool returns a CONFIRMATION REQUIRED message
+      explaining the risk. Re-invoke with confirm_risky: true only after the
+      user has reviewed the code and approved it.
     DESC
 
     arguments do
       required(:code).filled(:string).description("Ruby code to execute (read-only operations only)")
       optional(:timeout).filled(:integer).description("Timeout in seconds. Default: 30, Max: 60")
+      optional(:confirm_risky).filled(:bool).description("Set true ONLY after the user has explicitly approved running code that uses sandbox-bypass-capable constructs (send, public_send, const_get, Kernel#open). When false/absent, such code is not executed; the tool returns a CONFIRMATION REQUIRED message instead.")
     end
 
     # Patterns that indicate dangerous operations
@@ -76,14 +85,30 @@ module RailsMcpServer
       /set_trace_func/i,
 
       # Environment/credentials access
-      /ENV\[/i,
-      /ENV\.fetch/i,
+      # Match any ENV usage (ENV[, ENV.fetch, ENV.to_h, ENV.values_at, ENV.each,
+      # ...). Case-sensitive so it doesn't flag `Rails.env` or a local `env`.
+      /\bENV\b/,
       /Rails\.application\.credentials/i,
       /Rails\.application\.secrets/i,
 
       # Load/require that could execute arbitrary code
       /load\s*[(\s]+[^)]*\$/i,
       /require\s+[^'"]/i
+    ].freeze
+
+    # Dual-use constructs that are NOT hard-blocked (they have legitimate
+    # read-only uses) but can defeat the static safety scan, so running them
+    # requires explicit user confirmation via confirm_risky: true.
+    # Each entry: [pattern, label, why-it-is-risky].
+    CONFIRMATION_REQUIRED_PATTERNS = [
+      [/(?<![.\w])open\s*\(/, "Kernel#open",
+        "`open(arg)` runs a shell command when arg begins with '|', and can open network/URI targets — both escape the sandbox."],
+      [/\bpublic_send\b/, "public_send",
+        "dynamic dispatch can invoke methods the static scan cannot see, e.g. reaching blocked system/file APIs indirectly."],
+      [/\bsend\s*[(\s]/, "send",
+        "dynamic dispatch can invoke methods the static scan cannot see, e.g. reaching blocked system/file APIs indirectly."],
+      [/\bconst_get\b/, "const_get",
+        "resolves constants by name at runtime, which can reach classes the static scan would otherwise block."]
     ].freeze
 
     # Sensitive file patterns (in addition to .gitignore)
@@ -126,7 +151,7 @@ module RailsMcpServer
         puts Dir.glob('app/models/*.rb')
     MSG
 
-    def call(code:, timeout: 30)
+    def call(code:, timeout: 30, confirm_risky: false)
       unless current_project
         return "No active project. Please switch to a project first."
       end
@@ -134,14 +159,20 @@ module RailsMcpServer
       timeout = [timeout.to_i, 60].min # Cap at 60 seconds
       timeout = 10 if timeout < 1
 
-      # Step 1: Static analysis - reject dangerous code
+      # Step 1: Static analysis - reject outright-dangerous code
       validation_error = validate_code_safety(code)
       return validation_error if validation_error
 
-      # Step 2: Build the sandboxed execution environment
+      # Step 2: Dual-use constructs require explicit user confirmation
+      unless confirm_risky
+        confirmation = confirmation_required(code)
+        return confirmation if confirmation
+      end
+
+      # Step 3: Build the sandboxed execution environment
       sandbox_code = build_sandbox(code)
 
-      # Step 3: Execute with timeout
+      # Step 4: Execute with timeout
       execute_sandboxed(sandbox_code, timeout)
     end
 
@@ -157,6 +188,23 @@ module RailsMcpServer
       nil
     end
 
+    # Returns a message asking the model to confirm with the user when the code
+    # uses dual-use constructs, or nil when there is nothing to confirm.
+    def confirmation_required(code)
+      matched = CONFIRMATION_REQUIRED_PATTERNS.select { |pattern, _label, _reason| code.match?(pattern) }
+      return nil if matched.empty?
+
+      details = matched.map { |_pattern, label, reason| "  - `#{label}`: #{reason}" }.join("\n")
+
+      <<~MSG
+        CONFIRMATION REQUIRED: This code uses constructs that can bypass the sandbox's static safety checks:
+
+        #{details}
+
+        These are not blocked outright because they have legitimate read-only uses, but they can reach APIs the safety scan would otherwise stop. Ask the user to review the code and confirm they want to run it. If they approve, re-invoke execute_ruby with confirm_risky: true. Do not set confirm_risky yourself without the user's explicit approval.
+      MSG
+    end
+
     def build_sandbox(user_code)
       gitignore_patterns = parse_gitignore
       all_patterns = SENSITIVE_PATTERNS.map(&:source) + gitignore_patterns
@@ -167,13 +215,40 @@ module RailsMcpServer
 
         # Sandbox wrapper for safe execution
         module McpSandbox
-          PROJECT_ROOT = #{active_project_path.inspect}.freeze
+          # realpath-normalized so symlink resolution below compares against the
+          # canonical root (e.g. macOS /var -> /private/var) rather than a path
+          # that would never prefix-match a resolved target.
+          PROJECT_ROOT = File.realpath(#{active_project_path.inspect}).freeze
 
           ALLOWED_READ_PATHS = #{ALLOWED_READ_PATHS.inspect}.freeze
+
+          # realpath-resolved forms of the allowlist, so a resolved target still
+          # matches when the allowed dir is itself a symlink (e.g. macOS
+          # /usr/share/zoneinfo -> /private/var/db/timezone/.../zoneinfo).
+          CANONICAL_ALLOWED_READ_PATHS = ALLOWED_READ_PATHS.map { |dir|
+            File.exist?(dir) ? File.realpath(dir) : dir
+          }.freeze
 
           SENSITIVE_PATTERNS = [
             #{sensitive_patterns_ruby}
           ].freeze
+
+          # Native method handles captured *before* the File/Dir overrides below
+          # replace them. Held in private constants so sandboxed user code has no
+          # public `File.original_read`-style alias to call the raw method back.
+          ORIGINAL_FILE_READ      = File.method(:read)
+          ORIGINAL_FILE_READLINES = File.method(:readlines)
+          ORIGINAL_FILE_BINREAD   = File.method(:binread)
+          ORIGINAL_FILE_EXIST     = File.method(:exist?)
+          ORIGINAL_FILE_DIRECTORY = File.method(:directory?)
+          ORIGINAL_FILE_FILE      = File.method(:file?)
+          ORIGINAL_FILE_REALPATH  = File.method(:realpath)
+          ORIGINAL_DIR_GLOB       = Dir.method(:glob)
+          ORIGINAL_DIR_ENTRIES    = Dir.method(:entries)
+          private_constant :ORIGINAL_FILE_READ, :ORIGINAL_FILE_READLINES,
+            :ORIGINAL_FILE_BINREAD, :ORIGINAL_FILE_EXIST, :ORIGINAL_FILE_DIRECTORY,
+            :ORIGINAL_FILE_FILE, :ORIGINAL_FILE_REALPATH, :ORIGINAL_DIR_GLOB,
+            :ORIGINAL_DIR_ENTRIES
 
           class PathViolation < StandardError; end
           class SensitiveFileViolation < StandardError; end
@@ -181,18 +256,32 @@ module RailsMcpServer
 
           module_function
 
+          # Resolve symlinks so a link *inside* the project cannot be used to
+          # read a target outside it. realpath needs the path to exist, so for a
+          # not-yet-existing path resolve the deepest existing ancestor and
+          # re-append the remainder (which still catches a symlinked ancestor).
+          def resolve_symlinks(expanded)
+            return ORIGINAL_FILE_REALPATH.call(expanded) if ORIGINAL_FILE_EXIST.call(expanded)
+
+            parent = File.dirname(expanded)
+            return expanded if parent == expanded
+
+            File.join(resolve_symlinks(parent), File.basename(expanded))
+          end
+
           def validate_path!(path)
             expanded = File.expand_path(path, PROJECT_ROOT)
+            resolved = resolve_symlinks(expanded)
 
-            if ALLOWED_READ_PATHS.any? { |dir| expanded == dir || expanded.start_with?(dir + "/") }
-              return expanded
+            if (ALLOWED_READ_PATHS + CANONICAL_ALLOWED_READ_PATHS).any? { |dir| resolved == dir || resolved.start_with?(dir + "/") }
+              return resolved
             end
 
-            unless expanded.start_with?(PROJECT_ROOT + "/") || expanded == PROJECT_ROOT
+            unless resolved.start_with?(PROJECT_ROOT + "/") || resolved == PROJECT_ROOT
               raise PathViolation, "Access denied: path '\#{path}' is outside project directory"
             end
 
-            relative_path = expanded.sub(PROJECT_ROOT + "/", "")
+            relative_path = resolved.sub(PROJECT_ROOT + "/", "")
 
             SENSITIVE_PATTERNS.each do |pattern|
               if relative_path.match?(pattern)
@@ -200,37 +289,48 @@ module RailsMcpServer
               end
             end
 
-            expanded
+            resolved
           end
 
           def safe_read(path)
-            validated_path = validate_path!(path)
-            File.original_read(validated_path)
+            ORIGINAL_FILE_READ.call(validate_path!(path))
+          end
+
+          def safe_readlines(path)
+            ORIGINAL_FILE_READLINES.call(validate_path!(path))
+          end
+
+          def safe_binread(path)
+            ORIGINAL_FILE_BINREAD.call(validate_path!(path))
+          end
+
+          def safe_foreach(path, &block)
+            lines = safe_readlines(path)
+            return lines.each unless block
+
+            lines.each(&block)
           end
 
           def safe_exist?(path)
-            validated_path = validate_path!(path)
-            File.original_exist?(validated_path)
+            ORIGINAL_FILE_EXIST.call(validate_path!(path))
           rescue PathViolation, SensitiveFileViolation
             false
           end
 
           def safe_directory?(path)
-            validated_path = validate_path!(path)
-            File.original_directory?(validated_path)
+            ORIGINAL_FILE_DIRECTORY.call(validate_path!(path))
           rescue PathViolation, SensitiveFileViolation
             false
           end
 
           def safe_file?(path)
-            validated_path = validate_path!(path)
-            File.original_file?(validated_path)
+            ORIGINAL_FILE_FILE.call(validate_path!(path))
           rescue PathViolation, SensitiveFileViolation
             false
           end
 
           def safe_glob(pattern, base: PROJECT_ROOT)
-            Dir.original_glob(File.join(base, pattern)).select do |path|
+            ORIGINAL_DIR_GLOB.call(File.join(base, pattern)).select do |path|
               validate_path!(path)
               true
             rescue PathViolation, SensitiveFileViolation
@@ -239,21 +339,56 @@ module RailsMcpServer
           end
 
           def safe_entries(path)
-            validated_path = validate_path!(path)
-            Dir.original_entries(validated_path).reject { |e| e.start_with?(".") }
+            ORIGINAL_DIR_ENTRIES.call(validate_path!(path)).reject { |e| e.start_with?(".") }
+          end
+
+          # True only when ActiveRecord is loaded *and* a connection can be
+          # obtained, so we never turn a pure-Ruby read-only snippet into a
+          # database connection error just to wrap it in a transaction.
+          def database_available?
+            return false unless defined?(ActiveRecord::Base)
+
+            ActiveRecord::Base.connection
+            true
+          rescue StandardError
+            false
+          end
+
+          # Run the block inside a transaction that is *always* rolled back, so
+          # accidental writes are undone. Harm reduction, not a guarantee: DDL
+          # auto-commits on some adapters (e.g. MySQL) and after_commit
+          # callbacks are suppressed. Falls back to a plain call when no
+          # database is available. Real exceptions still propagate (and also
+          # trigger the rollback).
+          def readonly_guard
+            return yield unless database_available?
+
+            result = nil
+            ActiveRecord::Base.transaction do
+              result = yield
+              raise ActiveRecord::Rollback
+            end
+            result
           end
         end
 
         # Override File class methods
         class File
           class << self
-            alias_method :original_read, :read
-            alias_method :original_exist?, :exist?
-            alias_method :original_directory?, :directory?
-            alias_method :original_file?, :file?
-
             def read(path, *args)
               McpSandbox.safe_read(path)
+            end
+
+            def readlines(path, *args)
+              McpSandbox.safe_readlines(path)
+            end
+
+            def binread(path, *args)
+              McpSandbox.safe_binread(path)
+            end
+
+            def foreach(path, *args, &block)
+              McpSandbox.safe_foreach(path, &block)
             end
 
             def exist?(path)
@@ -293,9 +428,6 @@ module RailsMcpServer
         # Override Dir class methods
         class Dir
           class << self
-            alias_method :original_glob, :glob
-            alias_method :original_entries, :entries
-
             def glob(pattern, *args)
               McpSandbox.safe_glob(pattern)
             end
@@ -308,6 +440,29 @@ module RailsMcpServer
               define_method(method) do |*args|
                 raise McpSandbox::WriteViolation, "Directory modifications are not permitted: Dir.\#{method}"
               end
+            end
+          end
+        end
+
+        # Override IO read entry points. File < IO, but IO.read / IO.readlines /
+        # IO.binread / IO.foreach are separate class methods that bypass the File
+        # overrides above, so they must be sandboxed independently.
+        class IO
+          class << self
+            def read(path, *args)
+              McpSandbox.safe_read(path)
+            end
+
+            def readlines(path, *args)
+              McpSandbox.safe_readlines(path)
+            end
+
+            def binread(path, *args)
+              McpSandbox.safe_binread(path)
+            end
+
+            def foreach(path, *args, &block)
+              McpSandbox.safe_foreach(path, &block)
             end
           end
         end
@@ -367,8 +522,13 @@ module RailsMcpServer
         end
 
         # ============ USER CODE BELOW ============
+        # Wrapped in an always-rolled-back transaction so accidental DB writes
+        # (delete_all, update, save, raw DML) are undone. See McpSandbox
+        # .readonly_guard for the caveats; it's a no-op without a database.
         begin
-          #{user_code}
+          McpSandbox.readonly_guard do
+            #{user_code}
+          end
         rescue McpSandbox::PathViolation => e
           puts "PATH ERROR: \#{e.message}"
         rescue McpSandbox::SensitiveFileViolation => e
@@ -407,23 +567,19 @@ module RailsMcpServer
 
     def execute_sandboxed(code, timeout)
       require "tempfile"
-      require "timeout"
 
       Tempfile.create(["mcp_sandbox", ".rb"]) do |f|
         f.write(code)
         f.flush
 
-        begin
-          Timeout.timeout(timeout) do
-            result = RailsMcpServer::RunProcess.execute_rails_command(
-              active_project_path,
-              "bin/rails runner #{f.path} 2>&1"
-            )
-            result.empty? ? NO_OUTPUT_MESSAGE : result
-          end
-        rescue Timeout::Error
-          "TIMEOUT: Execution exceeded #{timeout} seconds"
-        end
+        # RunProcess enforces the timeout by killing the whole process group, so
+        # a runaway `rails runner` is actually terminated rather than orphaned.
+        result = RailsMcpServer::RunProcess.execute_rails_command(
+          active_project_path,
+          "bin/rails runner #{f.path} 2>&1",
+          timeout: timeout
+        )
+        result.to_s.empty? ? NO_OUTPUT_MESSAGE : result
       end
     end
   end

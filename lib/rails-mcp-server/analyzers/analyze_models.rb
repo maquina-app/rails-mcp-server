@@ -60,24 +60,32 @@ module RailsMcpServer
 
             Tips:
             - Use CamelCase: 'User', 'BlogPost', 'OrderItem'
+            - For namespaced models use 'Namespace::Model' or the file path 'namespace/model'
             - Use singular form: 'User' not 'Users'
             - Run analyze_models without params to list all models
           ERROR
         end
 
+        # Resolve the canonical constant from the file we actually found, rather
+        # than trusting the raw input. This lets namespaced ("Base::FundHolding"),
+        # path ("base/fund_holding") and flattened ("BaseFundHolding") inputs all
+        # produce a valid Ruby constant for the introspection runner, and keeps
+        # unvalidated user input out of the interpolated script.
+        class_name = model_class_name(model_file)
+
         case detail_level
         when "names"
-          "Model: #{model_name}\nFile: #{model_file.sub(active_project_path + "/", "")}"
+          "Model: #{class_name}\nFile: #{model_file.sub(active_project_path + "/", "")}"
         when "associations"
-          format_associations_only(model_name, model_file)
+          format_associations_only(class_name, model_file)
         else
-          build_full_analysis(model_name, model_file, analysis_type)
+          build_full_analysis(class_name, model_file, analysis_type)
         end
       end
 
-      def format_associations_only(model_name, model_file)
-        associations = get_associations_via_introspection(model_name)
-        output = ["Model: #{model_name}", "File: #{model_file.sub(active_project_path + "/", "")}", "", "Associations:"]
+      def format_associations_only(class_name, model_file)
+        associations = get_associations_via_introspection(class_name)
+        output = ["Model: #{class_name}", "File: #{model_file.sub(active_project_path + "/", "")}", "", "Associations:"]
         if associations&.any?
           associations.each { |a| output << "  #{a[:type]} :#{a[:name]}" }
         else
@@ -86,11 +94,11 @@ module RailsMcpServer
         output.join("\n")
       end
 
-      def build_full_analysis(model_name, model_file, analysis_type)
-        output = ["=" * 60, "Model: #{model_name}", "File: #{model_file.sub(active_project_path + "/", "")}", "=" * 60]
+      def build_full_analysis(class_name, model_file, analysis_type)
+        output = ["=" * 60, "Model: #{class_name}", "File: #{model_file.sub(active_project_path + "/", "")}", "=" * 60]
 
         if %w[introspection full].include?(analysis_type)
-          output << "" << introspection_analysis(model_name)
+          output << "" << introspection_analysis(class_name)
         end
 
         if %w[static full].include?(analysis_type)
@@ -101,8 +109,8 @@ module RailsMcpServer
         output.join("\n")
       end
 
-      def introspection_analysis(model_name)
-        script = build_introspection_script(model_name)
+      def introspection_analysis(class_name)
+        script = build_introspection_script(class_name)
         raw_output = execute_rails_runner(script)
         data = begin
           JSON.parse(extract_json(raw_output))
@@ -113,12 +121,15 @@ module RailsMcpServer
         format_introspection_result(data)
       end
 
-      def build_introspection_script(model_name)
+      def build_introspection_script(class_name)
         <<~RUBY
           require 'json'
           begin
-            model = #{model_name}
+            model = Object.const_get(#{class_name.inspect})
             result = {}
+            unless model.is_a?(Class) && model.respond_to?(:reflect_on_all_associations)
+              raise "\#{model} is not an ActiveRecord model"
+            end
             if model.respond_to?(:table_name) && model.table_exists?
               result[:table_name] = model.table_name
               result[:primary_key] = model.primary_key
@@ -238,8 +249,8 @@ module RailsMcpServer
         output.join("\n")
       end
 
-      def get_associations_via_introspection(model_name)
-        script = "require 'json'; puts (#{model_name}.reflect_on_all_associations.map { |a| { name: a.name.to_s, type: a.macro.to_s } } rescue []).to_json"
+      def get_associations_via_introspection(class_name)
+        script = "require 'json'; puts (Object.const_get(#{class_name.inspect}).reflect_on_all_associations.map { |a| { name: a.name.to_s, type: a.macro.to_s } } rescue []).to_json"
         begin
           JSON.parse(extract_json(execute_rails_runner(script))).map { |a| a.transform_keys(&:to_sym) }
         rescue
@@ -248,8 +259,39 @@ module RailsMcpServer
       end
 
       def find_model_file(model_name)
-        path = File.join(active_project_path, "app", "models", "#{underscore(model_name)}.rb")
-        File.exist?(path) ? path : Dir.glob(File.join(active_project_path, "app", "models", "**", "#{underscore(model_name).split("/").last}.rb")).first
+        models_dir = File.join(active_project_path, "app", "models")
+        return nil unless File.directory?(models_dir)
+
+        # Fast path: conventional inflection (Base::FundHolding -> base/fund_holding.rb).
+        direct = File.join(models_dir, "#{underscore(model_name)}.rb")
+        return direct if File.exist?(direct)
+
+        # Fallback: match against the files that actually exist so namespaced,
+        # path, flattened and bare-leaf forms all resolve, independent of any
+        # custom inflections the app registers. Prefer a full relative-path
+        # match; only then fall back to a bare filename (leaf) match.
+        files = Dir.glob(File.join(models_dir, "**", "*.rb"))
+        target = model_key(model_name)
+
+        files.find { |file| model_key(relative_model_path(file, models_dir)) == target } ||
+          files.find { |file| model_key(File.basename(file, ".rb")) == target }
+      end
+
+      # Normalizes a model reference to a separator- and case-insensitive key so
+      # "Base::FundHolding", "base/fund_holding" and "BaseFundHolding" all collapse
+      # to the same value ("basefundholding") for matching against real files.
+      def model_key(name)
+        name.to_s.gsub("::", "/").split("/").map { |segment| segment.tr("-", "_").delete("_").downcase }.join
+      end
+
+      def relative_model_path(file, models_dir)
+        file.sub("#{models_dir}/", "").sub(/\.rb$/, "")
+      end
+
+      # Canonical Ruby constant name for a resolved model file.
+      def model_class_name(model_file)
+        models_dir = File.join(active_project_path, "app", "models")
+        classify_model_name(relative_model_path(model_file, models_dir))
       end
 
       def classify_model_name(model_file)

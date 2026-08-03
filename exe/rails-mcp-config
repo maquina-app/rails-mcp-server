@@ -1151,6 +1151,7 @@ module RailsMcpConfig
 
       ui.info("Ruby executable: #{ruby_path}")
       ui.info("Server executable: #{server_path}")
+      ui.info("Rails introspection uses each project's own Ruby (mise/asdf/rbenv/rvm) automatically.")
       puts
 
       return unless ui.confirm("Apply this configuration?", default: true)

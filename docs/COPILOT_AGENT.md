@@ -14,7 +14,7 @@ GitHub Copilot coding agent runs MCP servers in ephemeral GitHub Actions environ
 
 - A Rails application repository on GitHub
 - GitHub Copilot with coding agent enabled
-- Ruby 3.1+ (recommended: 3.3)
+- Ruby 3.3+ (recommended: 3.4)
 
 ## Configuration
 

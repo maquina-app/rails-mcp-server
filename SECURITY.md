@@ -4,8 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.4.x   | :white_check_mark: |
-| < 1.4   | :x:                |
+| 1.6.x   | :white_check_mark: |
+| < 1.6   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -59,12 +59,20 @@ Given that this MCP server executes code in Rails projects and provides file sys
 
 This project implements several security controls:
 
-- **Sandboxed execution**: `execute_ruby` tool runs code in a restricted environment with file/network/system call protections
-- **Path validation**: file operations are constrained to the configured Rails project directory; the `execute_ruby` sandbox additionally allows read-only access to a small allowlist of system timezone data paths (e.g. `/usr/share/zoneinfo`)
+- **Sandboxed execution**: `execute_ruby` runs code in a restricted environment with file/network/system-call protections, applied by both static analysis (a forbidden-pattern scan) and runtime overrides of `File`/`IO`/`Dir`/`FileUtils`/`Kernel`
+- **Path validation**: file operations are constrained to the configured Rails project directory. The `execute_ruby` sandbox resolves symlinks (`realpath`) before validating, so a link inside the project cannot point outside it, and covers every `File`/`IO` read entry point (`read`, `readlines`, `binread`, `foreach`, `open`). It additionally allows read-only access to a small allowlist of system timezone paths (e.g. `/usr/share/zoneinfo`), matched against their canonical (symlink-resolved) locations
+- **Sensitive-file protection**: `.env`, credentials, keys, and any `.gitignore`d path are refused; environment-variable access (`ENV`) is blocked by the static scan
+- **Read-only database access**: `execute_ruby` runs user code inside a transaction that is always rolled back, so accidental writes (`delete_all`, `update`, `save`, raw DML) are undone. This is harm reduction, not a guarantee — DDL may auto-commit on some adapters (e.g. MySQL) and `after_commit` callbacks are suppressed
+- **Resource bounds**: `execute_ruby` enforces a timeout (default 30s, max 60s) by killing the entire process group, preventing an orphaned runaway `bin/rails runner`
+- **Confirmation for dual-use constructs**: `send`, `public_send`, `const_get`, and `Kernel#open` are not executed until the caller opts in via `confirm_risky: true`, so a human can review them first
 - **Project isolation**: each configured project has its own scope
 - **Dependency security**: automated updates via Dependabot, bundler-audit in CI
 - **Static analysis**: CodeQL scans on every PR and weekly
 - **Code review**: all changes require review before merging
+
+### Known limitations
+
+The `execute_ruby` controls are defense-in-depth, not a hard isolation boundary. The tool executes real Ruby with full access to the Rails application, so metaprogramming can, in principle, still reach otherwise-blocked APIs, DDL and non-default-connection writes can escape the transaction rollback, and there are no per-process CPU/memory caps beyond the timeout. Only enable `execute_ruby` for projects and clients you trust. For stronger guarantees, run the server against a database user with read-only grants and/or inside an OS-level sandbox (container, `sandbox-exec`, seccomp, etc.).
 
 ## Acknowledgments
 

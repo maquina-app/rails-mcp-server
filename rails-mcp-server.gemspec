@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.description = "A Ruby implementation of Model Context Protocol server for Rails projects"
   spec.homepage = "https://github.com/maquina-app/rails-mcp-server"
   spec.license = "MIT"
-  spec.required_ruby_version = Gem::Requirement.new(">= 3.2.0")
+  spec.required_ruby_version = Gem::Requirement.new(">= 3.3.0")
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage

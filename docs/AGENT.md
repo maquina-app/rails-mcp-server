@@ -225,6 +225,10 @@ railsMcpServer:execute_ruby code: "read_file('Gemfile')"
 railsMcpServer:execute_ruby code: "puts read_file('Gemfile')"
 ```
 
+**Read-only by design:** `execute_ruby` is for exploration, not mutation. File writes, shell/system calls, and network access are blocked, and any database writes run inside a transaction that is **always rolled back** — so `delete_all`, `update`, and `save` will not persist. Do not rely on it to change data.
+
+**Confirmation for dual-use constructs:** if your code uses `send`, `public_send`, `const_get`, or `Kernel#open`, the tool returns a `CONFIRMATION REQUIRED` message instead of running. These can bypass the sandbox's safety scan, so ask the user to review the code and, only with their explicit approval, re-invoke with `confirm_risky: true`. Do not set `confirm_risky` on your own.
+
 ---
 
 ## Tool Selection Summary
@@ -399,6 +403,14 @@ railsMcpServer:execute_ruby code: "User.count"
 # After (shows result)
 railsMcpServer:execute_ruby code: "puts User.count"
 ```
+
+### `execute_ruby` / `get_schema` fail to boot the app (Bundler / wrong Ruby)
+
+These tools run the project's `bin/rails`. The server auto-selects the project's Ruby via your version manager's shims (**mise**, **asdf**, **rbenv**; **rvm** is sourced), reading `.ruby-version` / `.tool-versions` / `.mise.toml`. If they still fail with a Bundler or boot error:
+
+1. Confirm the project has a `.ruby-version` (or `.tool-versions` / `.mise.toml`) and that Ruby is installed in your manager.
+2. Confirm your manager is one of mise, asdf, rbenv, or rvm — these are auto-detected.
+3. The underlying boot error is included in the tool output (no longer suppressed), so read it for the specific cause.
 
 ---
 

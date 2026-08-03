@@ -13,19 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Namespaced model resolution in `analyze_models`**: Module-namespaced models now resolve from every input form — `Namespace::Model`, the file path `namespace/model`, the flattened `NamespaceModel`, and the bare leaf `Model` — independent of the app's custom inflections. Previously namespaced models could be reported as "not found".
 
-### Fixed
-
-- **Ruby version manager resolution in `execute_ruby` / Rails runner**: Commands executed through a login but non-interactive shell (`shell -l -c`) no longer fall back to the system Ruby. rbenv, rvm, mise and asdf are activated from interactive shell rc files that such a shell never sources; the server now prepends each installed manager's shim directory to `PATH` (and sources rvm) so the project's Ruby is used.
-- **`analyze_models` introspection constant**: The introspection runner now derives the canonical constant from the resolved model file (loaded via `Object.const_get`) instead of interpolating the raw user input. This fixes invalid-Ruby / `NameError` failures for path and flattened inputs, degrades non-ActiveRecord constants to a clear message, and removes an unvalidated-input injection surface in the generated runner scripts.
-- **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
-
 ### Changed
 
+- **Dropped Ruby 3.2 support** (breaking): The minimum supported Ruby is now 3.3 (`required_ruby_version >= 3.3.0`), and the CI matrix tests Ruby 3.3 and 3.4. Dependency updates pull in transitive gems (`dry-configurable` 1.4.0, `parallel` 2.1.0) that require Ruby >= 3.3.
 - **Dependency updates**: Bumped project dependencies, including major upgrades to `puma` (~> 8.0), `minitest` (~> 6.0) and `mocha` (~> 3.0), plus `activesupport` 8.1.3.1, `addressable` 2.9.0, `rubocop` 1.88.2, `standard` 1.56.0 and other transitive gems.
-- **Deterministic linting**: Added `.standard.yml` pinning `ruby_version: 3.2` to match the gemspec's minimum supported Ruby, so Standard/RuboCop target the supported floor regardless of the local or CI Ruby.
+- **Deterministic linting**: Added `.standard.yml` pinning `ruby_version: 3.3` to match the gemspec's minimum supported Ruby, so Standard/RuboCop target the supported floor regardless of the local or CI Ruby.
+
+### Fixed
+
+- **Version-manager Ruby resolution for Rails-runner tools** (mise/asdf/rbenv agnostic): Tools that shell out to `bin/rails` (`execute_ruby`, `get_schema`, and the introspection half of `analyze_models` / `analyze_controller_views`) no longer fall back to the system Ruby on machines managed by mise or asdf. The runner previously exported the rbenv-only `RBENV_VERSION` and used a login shell (`$SHELL -l -c`); on macOS `path_helper` then reordered `PATH` so `bin/rails` booted under system Ruby and failed. It now prepends the active manager's shims directory (mise/asdf/rbenv, honoring `MISE_DATA_DIR`/`XDG_DATA_HOME`/`ASDF_DATA_DIR`/`RBENV_ROOT`) to the subprocess `PATH` and runs a non-login shell, so the project's Ruby is used. rvm (which has no shims) is still sourced when present.
+- **`analyze_models` introspection constant**: The introspection runner now derives the canonical constant from the resolved model file (loaded via `Object.const_get`) instead of interpolating the raw user input. This fixes invalid-Ruby / `NameError` failures for path and flattened inputs, degrades non-ActiveRecord constants to a clear message, and removes an unvalidated-input injection surface in the generated runner scripts.
+- **Analyzer errors no longer swallowed**: The analyzer runner path dropped `2>/dev/null`, so a Rails boot failure now surfaces the real error instead of a blank "Error executing Rails command".
+- **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
 
 ### Security
 
+- **`execute_ruby` sandbox hardening**: Closed several read-path bypasses and added defense-in-depth layers to the sandbox.
+  - **File-read coverage**: `IO.read`/`readlines`/`binread`/`foreach` and `File.readlines`/`binread`/`foreach` are now sandboxed too (previously only `File.read`/`open` were, so `IO.read('/etc/passwd')` and `File.readlines` bypassed path validation). The raw native readers are no longer exposed as public `File.original_read`-style aliases.
+  - **Symlink resolution**: path validation now resolves symlinks (`realpath`) before checking, so a link inside the project can't point outside it. The system-timezone allowlist is matched against canonical (symlink-resolved) locations so it keeps working on macOS.
+  - **Broader `ENV` block**: the static scan now rejects all `ENV` access (`ENV.to_h`, `ENV.values_at`, `ENV.each`, …), not just `ENV[]`/`ENV.fetch`.
+  - **Database writes rolled back**: user code runs inside a transaction that is always rolled back, so accidental `delete_all`/`update`/`save`/raw DML are undone. (Harm reduction — DDL may auto-commit on some adapters and `after_commit` callbacks are suppressed.)
+  - **Timeout actually stops runaway code**: the execution timeout now kills the entire process group, so a runaway `bin/rails runner` is terminated instead of being orphaned while the parent stops waiting.
+  - **Confirmation for dual-use constructs**: `send`, `public_send`, `const_get`, and `Kernel#open` are no longer run implicitly. The tool returns a `CONFIRMATION REQUIRED` message; callers must opt in with the new `confirm_risky: true` parameter after a human reviews the code.
 - **Puma advisories resolved**: Upgrading to `puma` 8.0.2 addresses CVE-2026-47736 and CVE-2026-47737 (both HIGH — PROXY Protocol v1 remote memory exhaustion and repeated-header handling). Dependency updates also clear the `concurrent-ruby` ReadWriteLock advisory (GHSA-6wx8-w4f5-wwcr). `bundler-audit` now reports no vulnerabilities.
 
 ## [1.5.1] - 2026-03-04
@@ -346,6 +355,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.6.0** (2026-08-03): Sandbox hardening for `execute_ruby`, version-manager Ruby resolution, namespaced model resolution, dependency + security updates (drops Ruby 3.2)
 - **v1.5.1** (2026-03-04): Relaxed dependency version constraints for better compatibility
 - **v1.4.0** (2025-12-10): Context-efficient architecture with progressive tool discovery (67% token reduction)
 - **v1.2.3** (2025-12-10): Setup script fix for readonly filesystems (NixOS compatibility)
