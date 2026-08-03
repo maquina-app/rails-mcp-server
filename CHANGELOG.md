@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-03
+
+### Added
+
+- **Namespaced model resolution in `analyze_models`**: Module-namespaced models now resolve from every input form — `Namespace::Model`, the file path `namespace/model`, the flattened `NamespaceModel`, and the bare leaf `Model` — independent of the app's custom inflections. Previously namespaced models could be reported as "not found".
+
 ### Changed
 
 - **Dropped Ruby 3.2 support** (breaking): The minimum supported Ruby is now 3.3 (`required_ruby_version >= 3.3.0`), and the CI matrix tests Ruby 3.3 and 3.4. Dependency updates pull in transitive gems (`dry-configurable` 1.4.0, `parallel` 2.1.0) that require Ruby >= 3.3.
@@ -16,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Version-manager Ruby resolution for Rails-runner tools** (mise/asdf/rbenv agnostic): Tools that shell out to `bin/rails` (`execute_ruby`, `get_schema`, and the introspection half of `analyze_models` / `analyze_controller_views`) no longer fall back to the system Ruby on machines managed by mise or asdf. The runner previously exported the rbenv-only `RBENV_VERSION` and used a login shell (`$SHELL -l -c`); on macOS `path_helper` then reordered `PATH` so `bin/rails` booted under system Ruby and failed. It now prepends the active manager's shims directory (mise/asdf/rbenv, honoring `MISE_DATA_DIR`/`XDG_DATA_HOME`/`ASDF_DATA_DIR`/`RBENV_ROOT`) to the subprocess `PATH` and runs a non-login shell, so the project's Ruby is used. rvm (which has no shims) is still sourced when present.
+- **`analyze_models` introspection constant**: The introspection runner now derives the canonical constant from the resolved model file (loaded via `Object.const_get`) instead of interpolating the raw user input. This fixes invalid-Ruby / `NameError` failures for path and flattened inputs, degrades non-ActiveRecord constants to a clear message, and removes an unvalidated-input injection surface in the generated runner scripts.
 - **Analyzer errors no longer swallowed**: The analyzer runner path dropped `2>/dev/null`, so a Rails boot failure now surfaces the real error instead of a blank "Error executing Rails command".
-- **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked. (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
+- **`execute_ruby` timezone data access**: The sandbox now allows read-only access to system timezone directories (`/usr/share/zoneinfo`, `/usr/share/lib/zoneinfo`, `/etc/zoneinfo`, `/var/db/timezone`). Previously, any code that touched `Time.zone` failed with `PATH ERROR: Access denied: path '/usr/share/zoneinfo/...' is outside project directory` because TZInfo lazily loads IANA timezone data on first use. Writes and all other out-of-project reads remain blocked.
 
 ### Security
 
@@ -348,6 +355,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.6.0** (2026-08-03): Sandbox hardening for `execute_ruby`, version-manager Ruby resolution, namespaced model resolution, dependency + security updates (drops Ruby 3.2)
 - **v1.5.1** (2026-03-04): Relaxed dependency version constraints for better compatibility
 - **v1.4.0** (2025-12-10): Context-efficient architecture with progressive tool discovery (67% token reduction)
 - **v1.2.3** (2025-12-10): Setup script fix for readonly filesystems (NixOS compatibility)
