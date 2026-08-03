@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **`execute_ruby` sandbox hardening**: Closed several read-path bypasses and added defense-in-depth layers to the sandbox.
+  - **File-read coverage**: `IO.read`/`readlines`/`binread`/`foreach` and `File.readlines`/`binread`/`foreach` are now sandboxed too (previously only `File.read`/`open` were, so `IO.read('/etc/passwd')` and `File.readlines` bypassed path validation). The raw native readers are no longer exposed as public `File.original_read`-style aliases.
+  - **Symlink resolution**: path validation now resolves symlinks (`realpath`) before checking, so a link inside the project can't point outside it. The system-timezone allowlist is matched against canonical (symlink-resolved) locations so it keeps working on macOS.
+  - **Broader `ENV` block**: the static scan now rejects all `ENV` access (`ENV.to_h`, `ENV.values_at`, `ENV.each`, …), not just `ENV[]`/`ENV.fetch`.
+  - **Database writes rolled back**: user code runs inside a transaction that is always rolled back, so accidental `delete_all`/`update`/`save`/raw DML are undone. (Harm reduction — DDL may auto-commit on some adapters and `after_commit` callbacks are suppressed.)
+  - **Timeout actually stops runaway code**: the execution timeout now kills the entire process group, so a runaway `bin/rails runner` is terminated instead of being orphaned while the parent stops waiting.
+  - **Confirmation for dual-use constructs**: `send`, `public_send`, `const_get`, and `Kernel#open` are no longer run implicitly. The tool returns a `CONFIRMATION REQUIRED` message; callers must opt in with the new `confirm_risky: true` parameter after a human reviews the code.
 - **Puma advisories resolved**: Upgrading to `puma` 8.0.2 addresses CVE-2026-47736 and CVE-2026-47737 (both HIGH — PROXY Protocol v1 remote memory exhaustion and repeated-header handling). Dependency updates also clear the `concurrent-ruby` ReadWriteLock advisory (GHSA-6wx8-w4f5-wwcr). `bundler-audit` now reports no vulnerabilities.
 
 ## [1.5.1] - 2026-03-04

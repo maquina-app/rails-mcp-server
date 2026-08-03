@@ -1,9 +1,14 @@
 require "bundler"
 require "shellwords"
+require "open3"
+require "timeout"
 
 module RailsMcpServer
   class RunProcess
-    def self.execute_rails_command(project_path, command)
+    # `timeout` (seconds) bounds execution. When set, the command runs in its
+    # own process group so a timeout kills the whole tree; nil keeps the
+    # original unbounded behavior.
+    def self.execute_rails_command(project_path, command, timeout: nil)
       RailsMcpServer.log(:debug, "Executing: #{command}")
 
       Bundler.with_unbundled_env do
@@ -26,7 +31,12 @@ module RailsMcpServer
         # ahead of the manager's shims — the exact reason the system Ruby leaked
         # in. It also never sources ~/.zshrc, where mise/asdf activation usually
         # lives. `-c` keeps the PATH we assembled above intact.
-        stdout_str, stderr_str, status = Open3.capture3(subprocess_env, shell, "-c", shell_command)
+        stdout_str, stderr_str, status =
+          if timeout
+            capture3_with_timeout(subprocess_env, shell, shell_command, timeout)
+          else
+            Open3.capture3(subprocess_env, shell, "-c", shell_command)
+          end
 
         if status.success?
           RailsMcpServer.log(:debug, "Command succeeded")
@@ -39,9 +49,46 @@ module RailsMcpServer
           "Error executing Rails command: #{command}\n\n#{error_output}"
         end
       end
+    rescue Timeout::Error
+      RailsMcpServer.log(:error, "Command timed out after #{timeout} seconds")
+      "TIMEOUT: Execution exceeded #{timeout} seconds"
     rescue => e
       RailsMcpServer.log(:error, "Exception executing Rails command: #{e.message}")
       "Exception executing command: #{e.message}"
+    end
+
+    # Run the command in its own process group so a timeout can kill the entire
+    # tree (the shell *and* its `rails runner` grandchild). Open3.capture3 gives
+    # no handle to signal the group, so drive popen3 directly and drain stdout/
+    # stderr on separate threads to avoid a full-pipe deadlock. Re-raises
+    # Timeout::Error after killing; the caller maps it to a user-facing message.
+    def self.capture3_with_timeout(env, shell, shell_command, timeout)
+      Open3.popen3(env, shell, "-c", shell_command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+        stdin.close
+        out = +""
+        err = +""
+        out_reader = Thread.new { out << stdout.read }
+        err_reader = Thread.new { err << stderr.read }
+
+        begin
+          status = Timeout.timeout(timeout) { wait_thr.value }
+          out_reader.join
+          err_reader.join
+          [out, err, status]
+        rescue Timeout::Error
+          kill_process_group(wait_thr.pid)
+          out_reader.join(1)
+          err_reader.join(1)
+          raise
+        end
+      end
+    end
+
+    # KILL the process group led by `pid`. Negative pid targets the whole group.
+    def self.kill_process_group(pid)
+      Process.kill("KILL", -Process.getpgid(pid))
+    rescue Errno::ESRCH, Errno::EPERM
+      # Already exited or not signalable; nothing to clean up.
     end
 
     # Shim directories for the version managers installed on this machine,
