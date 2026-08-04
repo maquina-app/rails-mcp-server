@@ -233,15 +233,15 @@ class ExecuteRubyTest < Minitest::Test
     end
   end
 
-  # Tier 1 hardening: require is blocked outright. bin/rails runner has already
-  # booted Rails and the stdlib it loads, so inspection code never needs it,
-  # and every dangerous stdlib escape has to be required first. Covers literal
-  # (quoted / parenthesized), dynamic, and require_relative forms.
-  def test_static_analysis_rejects_all_requires
+  # Tier 1 hardening: only a tiny allowlist of pure-data libs may be required;
+  # process/native bridges and everything else are rejected, as are dynamic
+  # requires and require_relative (which loads arbitrary project files).
+  def test_static_analysis_rejects_non_allowlisted_requires
     [
       'require "pty"',
       "require 'open3'",
       'require("socket")',
+      'require "fiddle"',
       'require "json"',
       "require SOME_CONST",
       'require_relative "../../config/environment"'
@@ -250,6 +250,14 @@ class ExecuteRubyTest < Minitest::Test
 
       refute_nil error, "expected #{snippet} to be rejected"
       assert_includes error, "REJECTED"
+    end
+  end
+
+  # Tier 1 hardening: the allowlisted pure-data libs (csv + timezone libs) may
+  # be required, in every literal form.
+  def test_static_analysis_allows_data_lib_requires
+    ["require \"csv\"", "require 'tzinfo'", "require(\"date\")", "require \"Time\""].each do |snippet|
+      assert_nil @tool.send(:validate_code_safety, snippet), "expected #{snippet} to be allowed"
     end
   end
 

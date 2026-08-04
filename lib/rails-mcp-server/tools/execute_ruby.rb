@@ -20,9 +20,10 @@ module RailsMcpServer
       - Cannot access files outside the project directory (read-only system data
         such as timezone files under /usr/share/zoneinfo is allowed)
       - Cannot execute shell commands or system calls
-      - Cannot `require`/`require_relative` additional libraries — Rails and the
-        stdlib it loads (json, yaml, set, date, ...) are already available under
-        `bin/rails runner`, so inspection code does not need to require anything
+      - Cannot `require` arbitrary libraries or `require_relative` project files.
+        Rails and the stdlib it loads (json, yaml, set, ...) are already
+        available under `bin/rails runner`; only a few pure-data libraries not
+        always preloaded (csv, and the timezone libs) may be required
       - Database writes run inside a transaction that is always rolled back, so
         treat this as read-only for data too (note: DDL may still commit on some
         adapters, and after_commit callbacks do not fire)
@@ -116,19 +117,30 @@ module RailsMcpServer
       /Rails\.application\.credentials/i,
       /Rails\.application\.secrets/i,
 
-      # Load/require. `require` is blocked outright: the code runs under
-      # `bin/rails runner`, so Rails, the app's models/gems, and the stdlib
-      # Rails loads on boot (json, yaml, set, date, ...) are already available
-      # without it. Since every dangerous stdlib escape has to be required
-      # first (`pty` → PTY.spawn, `open3`, `fiddle`/`ffi` → raw libc, `socket`),
-      # refusing all requires removes that whole class of bypass at the source.
-      # require_relative (loads/executes arbitrary project files) is refused in
-      # every form; require is refused for both literal and dynamic targets.
+      # Load/require. Under `bin/rails runner` Rails, the app's models/gems, and
+      # the stdlib Rails loads on boot are already available, so inspection code
+      # almost never needs `require`. Dynamic requires and require_relative
+      # (loads/executes arbitrary project files) are refused outright; literal
+      # `require "lib"` is refused unless the lib is on REQUIRE_ALLOWLIST. This
+      # keeps dangerous stdlib escapes (`pty`, `open3`, `fiddle`, `ffi`,
+      # `socket`) out while still allowing the few pure-data libs that aren't
+      # always preloaded (e.g. csv, the timezone libs).
       /\brequire_relative\b/i,
-      /\brequire\b\s*(?:\(\s*)?['"]/,
       /require\s+[^'"]/i,
       /load\s*[(\s]+[^)]*\$/i
     ].freeze
+
+    # The only libraries a literal `require` may name. All are pure-Ruby, with
+    # no process/network/native-call surface: csv (not always preloaded) and
+    # the timezone libs Rails uses when code touches Time.zone. Everything else
+    # — notably any process/native bridge — is rejected. Matched
+    # case-insensitively; a trailing ".rb" is ignored.
+    REQUIRE_ALLOWLIST = %w[csv tzinfo date time].freeze
+
+    # Extracts a literal require target from `require "x"`, `require'x'`, or
+    # `require("x")`. Dynamic (non-literal) requires are already rejected by the
+    # /require\s+[^'"]/ pattern above.
+    REQUIRE_STATEMENT = /\brequire\b\s*(?:\(\s*)?(['"])([^'"]+)\1/
 
     # Dual-use constructs that are NOT hard-blocked (they have legitimate
     # read-only uses) but can defeat the static safety scan, so running them
@@ -217,6 +229,21 @@ module RailsMcpServer
         if code.match?(pattern)
           return "REJECTED: Code contains forbidden pattern (#{pattern.source.split("\\").first}...). " \
                  "This tool only allows a restricted set of inspection operations."
+        end
+      end
+
+      validate_requires(code)
+    end
+
+    # Rejects any literal `require` of a library outside REQUIRE_ALLOWLIST.
+    # (require_relative and dynamic requires are already rejected by the
+    # forbidden patterns.) Returns an error string, or nil when permitted.
+    def validate_requires(code)
+      code.scan(REQUIRE_STATEMENT).each do |_quote, lib|
+        normalized = lib.downcase.sub(/\.rb\z/, "")
+        unless REQUIRE_ALLOWLIST.include?(normalized)
+          return "REJECTED: require of '#{lib}' is not permitted. " \
+                 "Only these libraries may be required: #{REQUIRE_ALLOWLIST.join(", ")}."
         end
       end
       nil
