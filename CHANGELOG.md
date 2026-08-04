@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`execute_ruby` process-execution hardening**: Closed a command-execution path and tightened the static filter.
+  - **`require` allowlist**: only a small set of standard-library data helpers (`json`, `set`, `yaml`, `csv`, `digest`, …) may be `require`d; `require_relative` and everything else are rejected. This closes `require "pty"` (`PTY.spawn`/`PTY.getpty` started a child process outside the `Kernel#system` guard, giving arbitrary host command execution), as well as `open3`, `fiddle`, `ffi`, and `socket`, at the source rather than by enumerating individual APIs.
+  - **Native/PTY patterns**: `PTY`, `Fiddle`, and `FFI` are added to the forbidden-pattern scan as defense in depth.
+  - **Dynamic dispatch to execution sinks hard-blocked**: `send`/`public_send`/`__send__`/`const_get` aimed by name at an execution or eval sink (`system`, `exec`, `spawn`, `fork`, `eval`, `popen`, `Open3`, `Process`, `PTY`, …) are now rejected outright instead of merely gated behind `confirm_risky`. Benign dynamic dispatch (e.g. `record.send(:name)`) is unaffected.
+  - **Honest framing**: the tool description and docs no longer call `execute_ruby` a read-only sandbox. It runs caller-supplied Ruby with the privileges of the server process; the controls are best-effort guardrails, not an isolation boundary.
+
+### Fixed
+
+- **ReDoS in the `execute_ruby` static scan**: Rewrote the `require`/dynamic-dispatch matchers to remove an ambiguous `\s*\(?\s*` construct that backtracked in polynomial time on adversarial whitespace input (CodeQL alert). Matching is now linear.
+
 ## [1.6.0] - 2026-08-03
 
 ### Added

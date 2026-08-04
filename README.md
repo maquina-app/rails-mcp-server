@@ -17,7 +17,7 @@ This Rails MCP Server implements the MCP specification to give AI models access 
 - Get database schema information
 - Analyze controller-view relationships
 - Analyze environment configurations
-- Execute sandboxed Ruby code for custom queries
+- Execute Ruby code in the project context for custom queries
 - Access comprehensive Rails, Turbo, Stimulus, and Kamal documentation
 - Context-efficient architecture with progressive tool discovery
 - Seamless integration with LLM clients
@@ -360,7 +360,7 @@ The server uses a progressive tool discovery architecture to minimize context us
 - **`switch_project`** - Select the active Rails project
 - **`search_tools`** - Discover available tools by category or keyword
 - **`execute_tool`** - Invoke internal analyzers with parameters
-- **`execute_ruby`** - Run sandboxed Ruby code for custom queries
+- **`execute_ruby`** - Run Ruby code in the project context for custom queries
 
 This design reduces initial context from ~2,400 tokens to ~800 tokens while maintaining full functionality.
 
@@ -412,7 +412,7 @@ After switching, you'll see a Quick Start guide with common commands.
 
 #### 4. `execute_ruby`
 
-**Description:** Execute sandboxed Ruby code in the Rails project context.
+**Description:** Execute Ruby code in the Rails project context, for inspection and exploration. Runs with the privileges of the server process — see the Security note below; this is not a sandbox for untrusted code.
 
 **Parameters:**
 
@@ -429,16 +429,21 @@ After switching, you'll see a Quick Start guide with common commands.
 
 **Note:** Use `puts` to see output from your code.
 
-**Security:** The sandbox is intended for read-only exploration and applies several layers of defense:
+**Security:** `execute_ruby` runs Ruby that you — or your coding agent — supply, inside your Rails application, with the privileges of the process that started the server. **It is not a security sandbox for untrusted code.** The guardrails below reduce accidental damage and block the obvious escapes, but real Ruby is expressive enough that a determined caller can work around a pattern-based filter; treat the controls as defense-in-depth, not an isolation boundary.
 
-- **No writes / shell / network:** file writes, `system`/`exec`/backticks, and network libraries are blocked by both static analysis and runtime overrides.
+Because you start the server yourself — normally locally, against your own project — the realistic risk is *running code you didn't intend to*, for example when a coding agent is steered by prompt injection into calling `execute_ruby` with a hostile payload. That payload would run as you. So: only enable this tool for projects and clients you trust, and actually review code before approving a `confirm_risky` re-run.
+
+Guardrails applied:
+
+- **No writes / shell / network:** file writes, `system`/`exec`/backticks/`spawn`, and network libraries are blocked by both static analysis and runtime overrides.
+- **Restricted `require`:** only a small allowlist of standard-library data helpers (`json`, `set`, `yaml`, `csv`, `digest`, …) may be required; `require_relative` and everything else — including process/native bridges like `pty`, `open3`, `fiddle`, `ffi`, `socket` — are refused, so those APIs can't be pulled in to escape the filter.
 - **Confined file reads:** reads are limited to the project directory (via all of `File`/`IO` `read`/`readlines`/`binread`/`foreach` and `File.open`), plus a small allowlist of read-only system timezone paths (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`. Paths are symlink-resolved (`realpath`) so a link inside the project cannot point outside it.
 - **No sensitive files:** `.env`, credentials, keys, and any `.gitignore`d path are refused.
-- **Database writes are rolled back:** user code runs inside a transaction that is always rolled back, so `delete_all`, `update`, `save`, and raw DML are undone. Treat the tool as read-only for data too. (Caveat: DDL may still commit on some adapters such as MySQL, and `after_commit` callbacks do not fire.)
+- **Database writes are rolled back:** user code runs inside a transaction that is always rolled back, so `delete_all`, `update`, `save`, and raw DML are undone — a safety net against accidental mutation, not a data-access guarantee. (Caveat: DDL may still commit on some adapters such as MySQL, and `after_commit` callbacks do not fire.)
 - **Bounded execution:** a timeout (default 30s, max 60s) kills the whole process group, so a runaway `bin/rails runner` is terminated rather than orphaned.
-- **Confirmation for dual-use constructs:** `send`, `public_send`, `const_get`, and `Kernel#open` are not run until you approve them via `confirm_risky: true`.
+- **Dynamic dispatch to execution sinks is hard-blocked:** `send`/`public_send`/`const_get` aimed by name at `system`/`exec`/`spawn`/`eval`/`Open3`/`Process`/`PTY`/… are rejected outright; the remaining dual-use forms of `send`, `public_send`, `const_get`, and `Kernel#open` are not run until you approve them via `confirm_risky: true`.
 
-These controls are defense-in-depth, not a hard isolation boundary. `execute_ruby` executes real Ruby with full access to the Rails app, so only enable it for projects and clients you trust. For stronger isolation run the server against a database user with read-only grants and/or inside an OS-level sandbox (container, `sandbox-exec`, etc.).
+For a real boundary, run the server against a database user with read-only grants and/or inside OS-level isolation (a container, `sandbox-exec`, seccomp, a dedicated low-privilege user with no ambient credentials or network) rather than relying on these in-process checks.
 
 ### Internal Analyzers (via execute_tool)
 

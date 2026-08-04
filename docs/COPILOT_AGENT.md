@@ -133,7 +133,7 @@ GitHub Copilot Agent only supports MCP **tools**. The following are available:
 | `switch_project` | Change active project (optional in single-project mode) |
 | `search_tools` | Discover available analyzers |
 | `execute_tool` | Invoke internal analyzers |
-| `execute_ruby` | Run sandboxed Ruby code |
+| `execute_ruby` | Run Ruby code in the project context |
 
 ### Internal Analyzers (via `execute_tool`)
 
@@ -171,7 +171,7 @@ The `load_guide` analyzer requires guides to be downloaded. To include guides:
 
 ### Network Restrictions
 
-GitHub Copilot Agent runs in a sandboxed environment with firewall restrictions. The MCP server has read-only access to the repository.
+GitHub Copilot Agent runs in a sandboxed environment with firewall restrictions. The MCP server is used here to inspect the repository and runs with the permissions of that agent environment; note that `execute_ruby` executes real Ruby with those permissions and is not itself an isolation boundary (see the [security notes](../README.md#4-execute_ruby)).
 
 ## Troubleshooting
 
