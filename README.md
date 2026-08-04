@@ -17,7 +17,6 @@ This Rails MCP Server implements the MCP specification to give AI models access 
 - Get database schema information
 - Analyze controller-view relationships
 - Analyze environment configurations
-- Execute Ruby code in the project context for custom queries
 - Access comprehensive Rails, Turbo, Stimulus, and Kamal documentation
 - Context-efficient architecture with progressive tool discovery
 - Seamless integration with LLM clients
@@ -230,7 +229,7 @@ Replace `/home/your_user/.rbenv/shims/ruby` with your actual Ruby path (an rbenv
 
 #### 2. The Ruby used to introspect each Rails project
 
-Tools that boot your app — `execute_ruby`, `get_schema`, and the introspection half of `analyze_models` / `analyze_controller_views` — run `bin/rails` inside the project directory. The server selects the **project's** Ruby automatically and is agnostic to your version manager: it prepends the active manager's shims (**mise**, **asdf**, **rbenv**) to the subprocess `PATH` and sources **rvm** when present, then uses a non-login shell so macOS `path_helper` cannot substitute the system Ruby. The version is taken from the project's `.ruby-version` / `.tool-versions` / `.mise.toml`, so different projects can use different Rubies with no extra configuration.
+Tools that boot your app — `get_schema`, `get_routes`, and the introspection half of `analyze_models` / `analyze_controller_views` — run `bin/rails` inside the project directory. The server selects the **project's** Ruby automatically and is agnostic to your version manager: it prepends the active manager's shims (**mise**, **asdf**, **rbenv**) to the subprocess `PATH` and sources **rvm** when present, then uses a non-login shell so macOS `path_helper` cannot substitute the system Ruby. The version is taken from the project's `.ruby-version` / `.tool-versions` / `.mise.toml`, so different projects can use different Rubies with no extra configuration.
 
 > No manual `PATH` workaround is needed. Previously these tools could fall back to the system Ruby on mise/asdf machines, where the app's Bundler then failed to boot.
 
@@ -286,7 +285,7 @@ Rails MCP Server works with GitHub Copilot coding agent out of the box. The serv
       "type": "local",
       "command": "rails-mcp-server",
       "args": ["--single-project"],
-      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+      "tools": ["switch_project", "search_tools", "execute_tool"]
     }
   }
 }
@@ -331,7 +330,7 @@ You can also use the `RAILS_MCP_PROJECT_PATH` environment variable:
       "env": {
         "RAILS_MCP_PROJECT_PATH": "."
       },
-      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+      "tools": ["switch_project", "search_tools", "execute_tool"]
     }
   }
 }
@@ -355,14 +354,13 @@ Each request includes a sequence number to match requests with responses, as def
 
 ### Context-Efficient Architecture
 
-The server uses a progressive tool discovery architecture to minimize context usage. Instead of exposing all tools upfront, it provides 4 bootstrap tools that allow LLMs to discover and invoke additional analyzers on-demand:
+The server uses a progressive tool discovery architecture to minimize context usage. Instead of exposing all tools upfront, it provides 3 bootstrap tools that allow LLMs to discover and invoke the introspection analyzers on-demand:
 
 - **`switch_project`** - Select the active Rails project
 - **`search_tools`** - Discover available tools by category or keyword
 - **`execute_tool`** - Invoke internal analyzers with parameters
-- **`execute_ruby`** - Run Ruby code in the project context for custom queries
 
-This design reduces initial context from ~2,400 tokens to ~800 tokens while maintaining full functionality.
+This design keeps initial context small while exposing the full set of analyzers on demand.
 
 ## AI Agent Guide
 
@@ -370,14 +368,13 @@ For AI agents (Claude, GPT, etc.) using this server, see the comprehensive **[AI
 
 - Quick start workflow
 - Tool selection guide for common tasks
-- Helper methods available in `execute_ruby`
 - Common pitfalls and how to avoid them
 - Error handling and fallback strategies
 - Integration with other MCP servers (e.g., Neovim MCP)
 
 ## Available Tools
 
-The server provides 4 registered tools plus internal analyzers accessible via `execute_tool`.
+The server provides 3 registered tools plus internal analyzers accessible via `execute_tool`.
 
 ### Registered Tools
 
@@ -409,41 +406,6 @@ After switching, you'll see a Quick Start guide with common commands.
 
 - `tool_name`: (String, required) Name of the analyzer (e.g., 'get_routes', 'analyze_models')
 - `params`: (Hash, optional) Parameters for the analyzer
-
-#### 4. `execute_ruby`
-
-**Description:** Execute Ruby code in the Rails project context, for inspection and exploration. Runs with the privileges of the server process — see the Security note below; this is not a sandbox for untrusted code.
-
-**Parameters:**
-
-- `code`: (String, required) Ruby code to execute
-- `timeout`: (Integer, optional) Timeout in seconds (default: 30, max: 60)
-- `confirm_risky`: (Boolean, optional) Set `true` only after you have explicitly approved code that uses dual-use constructs (`send`, `public_send`, `const_get`, `Kernel#open`). When false/absent, such code is not executed — the tool returns a `CONFIRMATION REQUIRED` message explaining the risk instead.
-
-**Available helper methods:**
-
-- `read_file(path)` - Read a file safely
-- `file_exists?(path)` - Check if a file exists
-- `list_files(pattern)` - Glob files (e.g., `'app/models/**/*.rb'`)
-- `project_root` - Get the project root path
-
-**Note:** Use `puts` to see output from your code.
-
-**Security:** `execute_ruby` runs Ruby that you — or your coding agent — supply, inside your Rails application, with the privileges of the process that started the server. **It is not a security sandbox for untrusted code.** The guardrails below reduce accidental damage and block the obvious escapes, but real Ruby is expressive enough that a determined caller can work around a pattern-based filter; treat the controls as defense-in-depth, not an isolation boundary.
-
-Because you start the server yourself — normally locally, against your own project — the realistic risk is *running code you didn't intend to*, for example when a coding agent is steered by prompt injection into calling `execute_ruby` with a hostile payload. That payload would run as you. So: only enable this tool for projects and clients you trust, and actually review code before approving a `confirm_risky` re-run.
-
-Guardrails applied:
-
-- **No writes / shell / network:** file writes, `system`/`exec`/backticks/`spawn`, and network libraries are blocked by both static analysis and runtime overrides.
-- **Almost no `require`:** `require_relative` and dynamic `require`s are refused, and `require "lib"` is refused for everything except a tiny allowlist of pure-data libraries (`csv` and the timezone libs) that Rails doesn't always preload. Under `bin/rails runner` the app's models, ActiveRecord, and the stdlib Rails loads on boot (`json`, `yaml`, `set`, `date`, …) are already available, so inspection code needs no requires anyway — and every dangerous stdlib escape (`pty`, `open3`, `fiddle`, `ffi`, `socket`) has to be required first, so refusing them removes that whole class of bypass at the source.
-- **Confined file reads:** reads are limited to the project directory (via all of `File`/`IO` `read`/`readlines`/`binread`/`foreach` and `File.open`), plus a small allowlist of read-only system timezone paths (e.g. `/usr/share/zoneinfo`) that Rails needs when code touches `Time.zone`. Paths are symlink-resolved (`realpath`) so a link inside the project cannot point outside it.
-- **No sensitive files:** `.env`, credentials, keys, and any `.gitignore`d path are refused.
-- **Database writes are rolled back:** user code runs inside a transaction that is always rolled back, so `delete_all`, `update`, `save`, and raw DML are undone — a safety net against accidental mutation, not a data-access guarantee. (Caveat: DDL may still commit on some adapters such as MySQL, and `after_commit` callbacks do not fire.)
-- **Bounded execution:** a timeout (default 30s, max 60s) kills the whole process group, so a runaway `bin/rails runner` is terminated rather than orphaned.
-- **Dynamic dispatch to execution sinks is hard-blocked:** `send`/`public_send`/`const_get` aimed by name at `system`/`exec`/`spawn`/`eval`/`Open3`/`Process`/`PTY`/… are rejected outright; the remaining dual-use forms of `send`, `public_send`, `const_get`, and `Kernel#open` are not run until you approve them via `confirm_risky: true`.
-
-For a real boundary, run the server against a database user with read-only grants and/or inside OS-level isolation (a container, `sandbox-exec`, seccomp, a dedicated low-privilege user with no ambient credentials or network) rather than relying on these in-process checks.
 
 ### Internal Analyzers (via execute_tool)
 
@@ -603,7 +565,7 @@ This will:
 
 In the MCP Inspector UI, you can:
 
-- See all available tools (you should see 4 registered tools)
+- See all available tools (you should see 3 registered tools)
 - Execute tool calls interactively
 - View request and response details
 - Debug issues in real-time
@@ -614,8 +576,8 @@ The Inspector UI provides an intuitive interface to interact with your MCP serve
 
 1. **Switch to a project:** `switch_project` with your project name
 2. **Discover tools:** `search_tools` to see available analyzers
-3. **Test analyzers:** `execute_tool` to invoke specific analyzers
-4. **Test Ruby execution:** `execute_ruby` with code like `puts read_file('Gemfile')`
+3. **Test analyzers:** `execute_tool` to invoke specific analyzers (e.g. `get_routes`, `get_schema`)
+4. **Read a file:** `execute_tool` with `get_file`, e.g. `{ "path": "Gemfile" }`
 
 ## Integration with LLM Clients
 

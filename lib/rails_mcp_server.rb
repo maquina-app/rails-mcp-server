@@ -12,7 +12,6 @@ require_relative "rails-mcp-server/tools/base_tool"
 require_relative "rails-mcp-server/tools/switch_project"
 require_relative "rails-mcp-server/tools/search_tools"
 require_relative "rails-mcp-server/tools/execute_tool"
-require_relative "rails-mcp-server/tools/execute_ruby"
 
 # Analyzers (internal, invoked via execute_tool)
 require_relative "rails-mcp-server/analyzers/base_analyzer"

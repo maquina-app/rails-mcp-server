@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-04
+
+### Removed
+
+- **`execute_ruby` tool removed** (breaking): The tool that executed caller-supplied Ruby via `bin/rails runner` is gone. It was originally intended for Rails introspection (routes, schema, model queries), but accepting arbitrary Ruby made it an arbitrary-code-execution surface that a regex denylist and in-process monkey-patching could not safely contain — the root cause behind the 1.6.x hardening series. The server is an **introspection tool**, and its dedicated analyzers already cover the intended uses:
+  - Reading files → `get_file`
+  - Finding files → `list_files`
+  - Routes / schema / models / controllers / env / structure → `get_routes`, `get_schema`, `analyze_models`, `analyze_controller_views`, `analyze_environment_config`, `project_info`
+  - The only capability dropped is running arbitrary live Ruby against the app (ad-hoc data queries), which is out of scope for an introspection server and was the source of the risk.
+
+### Changed
+
+- **Bootstrap tools reduced from 4 to 3**: `switch_project`, `search_tools`, `execute_tool`. The internal analyzers are unchanged and still discovered via `search_tools` / invoked via `execute_tool`.
+- **`switch_project` quick-start** now points to `execute_tool("get_file", …)` / `execute_tool("list_files", …)` instead of `execute_ruby`.
+- **Docs** (`README.md`, `docs/AGENT.md`, `docs/COPILOT_AGENT.md`, `SECURITY.md`) rewritten to route file reads/finds through `get_file` / `list_files` and to describe the server as introspection-only. `SECURITY.md` drops the `execute_ruby` sandbox section; the remaining file tools are protected by `PathValidator` (path-traversal and sensitive-file checks) and the app-booting analyzers pass caller input as validated parameters, never as code.
+
+### Migration
+
+Clients that listed `execute_ruby` in their tool config should remove it. Replace `execute_ruby` file reads with `get_file` (`{ path: ... }`) and file globs with `list_files` (`{ pattern: ... }`). Ad-hoc data queries (`User.count`, custom scopes) are no longer supported by design; use the dedicated analyzers for structural introspection. Users who still want free-form execution should pin to the `1.6.x` line, which retains the hardened `execute_ruby`.
+
 ## [1.6.1] - 2026-08-04
 
 ### Security
@@ -369,6 +389,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v2.0.0** (2026-08-04): Removed the `execute_ruby` tool — the server is introspection-only via its dedicated analyzers (breaking)
 - **v1.6.1** (2026-08-04): `execute_ruby` process-execution hardening (blocks the `require "pty"` → `PTY.spawn` command-execution path, restricts `require` to a data-lib allowlist, hard-blocks dynamic dispatch to execution sinks) and a ReDoS fix in the static scan
 - **v1.6.0** (2026-08-03): Sandbox hardening for `execute_ruby`, version-manager Ruby resolution, namespaced model resolution, dependency + security updates (drops Ruby 3.2)
 - **v1.5.1** (2026-03-04): Relaxed dependency version constraints for better compatibility
