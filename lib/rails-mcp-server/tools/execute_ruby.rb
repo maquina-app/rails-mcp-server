@@ -3,10 +3,16 @@ module RailsMcpServer
     tool_name "execute_ruby"
 
     description <<~DESC
-      Execute read-only Ruby code in the context of the Rails project. Use this for:
+      Execute Ruby code in the context of the Rails project, for inspection and
+      exploration. Use this for:
       - Complex queries that would require multiple tool calls
       - Filtering/transforming data before returning
       - Custom exploration of the codebase
+
+      This runs with the privileges of the rails-mcp-server process. The
+      restrictions below are best-effort guardrails against accidental writes
+      and obvious escapes, not a security boundary for untrusted code; only run
+      code you would run yourself.
 
       RESTRICTIONS:
       - Cannot create, modify, or delete files
@@ -14,6 +20,10 @@ module RailsMcpServer
       - Cannot access files outside the project directory (read-only system data
         such as timezone files under /usr/share/zoneinfo is allowed)
       - Cannot execute shell commands or system calls
+      - Cannot `require` arbitrary libraries or `require_relative` project files.
+        Rails and the stdlib it loads (json, yaml, set, ...) are already
+        available under `bin/rails runner`; only a few pure-data libraries not
+        always preloaded (csv, and the timezone libs) may be required
       - Database writes run inside a transaction that is always rolled back, so
         treat this as read-only for data too (note: DDL may still commit on some
         adapters, and after_commit callbacks do not fire)
@@ -33,7 +43,7 @@ module RailsMcpServer
     DESC
 
     arguments do
-      required(:code).filled(:string).description("Ruby code to execute (read-only operations only)")
+      required(:code).filled(:string).description("Ruby code to execute (inspection operations only)")
       optional(:timeout).filled(:integer).description("Timeout in seconds. Default: 30, Max: 60")
       optional(:confirm_risky).filled(:bool).description("Set true ONLY after the user has explicitly approved running code that uses sandbox-bypass-capable constructs (send, public_send, const_get, Kernel#open). When false/absent, such code is not executed; the tool returns a CONFIRMATION REQUIRED message instead.")
     end
@@ -60,6 +70,22 @@ module RailsMcpServer
       /IO\.popen/i,
       /Process\.(spawn|exec|fork)/i,
       /Shellwords/i,
+
+      # Pseudo-terminals and native/syscall bridges. PTY.spawn / PTY.getpty
+      # start a child process outside the Kernel#system guard; Fiddle and FFI
+      # can call libc (e.g. system(3), execve(2)) directly. None of these are
+      # needed for read-only inspection.
+      /\bPTY\b/,
+      /\bFiddle\b/,
+      /\bFFI\b/,
+
+      # Dynamic dispatch aimed at an execution/eval sink *by name* is hard
+      # blocked. The general send/public_send/const_get forms stay in the
+      # confirmation tier below; only a dangerous literal target is rejected
+      # outright, so `record.send(:name)` still works while
+      # `Process.send(:spawn, ...)` or `const_get("Open3")` do not.
+      /\b(?:public_send|__send__|send)\s*(?:\(\s*)?[:'"](?:system|exec|spawn|fork|eval|popen|syscall|`)/i,
+      /\bconst_get\s*(?:\(\s*)?['"](?:Open3|Process|PTY|Kernel|Socket|Fiddle|FFI|Binding|ObjectSpace|TCPSocket|UDPSocket)\b/i,
 
       # Network access
       /Net::(HTTP|FTP|SMTP)/i,
@@ -91,10 +117,30 @@ module RailsMcpServer
       /Rails\.application\.credentials/i,
       /Rails\.application\.secrets/i,
 
-      # Load/require that could execute arbitrary code
-      /load\s*[(\s]+[^)]*\$/i,
-      /require\s+[^'"]/i
+      # Load/require. Under `bin/rails runner` Rails, the app's models/gems, and
+      # the stdlib Rails loads on boot are already available, so inspection code
+      # almost never needs `require`. Dynamic requires and require_relative
+      # (loads/executes arbitrary project files) are refused outright; literal
+      # `require "lib"` is refused unless the lib is on REQUIRE_ALLOWLIST. This
+      # keeps dangerous stdlib escapes (`pty`, `open3`, `fiddle`, `ffi`,
+      # `socket`) out while still allowing the few pure-data libs that aren't
+      # always preloaded (e.g. csv, the timezone libs).
+      /\brequire_relative\b/i,
+      /require\s+[^'"]/i,
+      /load\s*[(\s]+[^)]*\$/i
     ].freeze
+
+    # The only libraries a literal `require` may name. All are pure-Ruby, with
+    # no process/network/native-call surface: csv (not always preloaded) and
+    # the timezone libs Rails uses when code touches Time.zone. Everything else
+    # — notably any process/native bridge — is rejected. Matched
+    # case-insensitively; a trailing ".rb" is ignored.
+    REQUIRE_ALLOWLIST = %w[csv tzinfo date time].freeze
+
+    # Extracts a literal require target from `require "x"`, `require'x'`, or
+    # `require("x")`. Dynamic (non-literal) requires are already rejected by the
+    # /require\s+[^'"]/ pattern above.
+    REQUIRE_STATEMENT = /\brequire\b\s*(?:\(\s*)?(['"])([^'"]+)\1/
 
     # Dual-use constructs that are NOT hard-blocked (they have legitimate
     # read-only uses) but can defeat the static safety scan, so running them
@@ -182,7 +228,22 @@ module RailsMcpServer
       FORBIDDEN_PATTERNS.each do |pattern|
         if code.match?(pattern)
           return "REJECTED: Code contains forbidden pattern (#{pattern.source.split("\\").first}...). " \
-                 "This tool only allows read-only operations."
+                 "This tool only allows a restricted set of inspection operations."
+        end
+      end
+
+      validate_requires(code)
+    end
+
+    # Rejects any literal `require` of a library outside REQUIRE_ALLOWLIST.
+    # (require_relative and dynamic requires are already rejected by the
+    # forbidden patterns.) Returns an error string, or nil when permitted.
+    def validate_requires(code)
+      code.scan(REQUIRE_STATEMENT).each do |_quote, lib|
+        normalized = lib.downcase.sub(/\.rb\z/, "")
+        unless REQUIRE_ALLOWLIST.include?(normalized)
+          return "REJECTED: require of '#{lib}' is not permitted. " \
+                 "Only these libraries may be required: #{REQUIRE_ALLOWLIST.join(", ")}."
         end
       end
       nil

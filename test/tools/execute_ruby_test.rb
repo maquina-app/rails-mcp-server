@@ -215,6 +215,88 @@ class ExecuteRubyTest < Minitest::Test
     assert_equal "executed", result
   end
 
+  # Tier 1 hardening: PTY.spawn / PTY.getpty start a child process outside the
+  # Kernel#system guard and must be rejected by static analysis.
+  def test_static_analysis_rejects_pty
+    ["PTY.spawn('/bin/sh')", "PTY.getpty('/bin/echo', 'hi')", "require \"pty\""].each do |snippet|
+      error = @tool.send(:validate_code_safety, snippet)
+
+      refute_nil error, "expected #{snippet} to be rejected"
+      assert_includes error, "REJECTED"
+    end
+  end
+
+  # Tier 1 hardening: native/syscall bridges can call libc directly.
+  def test_static_analysis_rejects_native_bridges
+    ["require \"fiddle\"", "require \"ffi\"", "Fiddle::Function.new(x)", "FFI::Library"].each do |snippet|
+      refute_nil @tool.send(:validate_code_safety, snippet), "expected #{snippet} to be rejected"
+    end
+  end
+
+  # Tier 1 hardening: only a tiny allowlist of pure-data libs may be required;
+  # process/native bridges and everything else are rejected, as are dynamic
+  # requires and require_relative (which loads arbitrary project files).
+  def test_static_analysis_rejects_non_allowlisted_requires
+    [
+      'require "pty"',
+      "require 'open3'",
+      'require("socket")',
+      'require "fiddle"',
+      'require "json"',
+      "require SOME_CONST",
+      'require_relative "../../config/environment"'
+    ].each do |snippet|
+      error = @tool.send(:validate_code_safety, snippet)
+
+      refute_nil error, "expected #{snippet} to be rejected"
+      assert_includes error, "REJECTED"
+    end
+  end
+
+  # Tier 1 hardening: the allowlisted pure-data libs (csv + timezone libs) may
+  # be required, in every literal form.
+  def test_static_analysis_allows_data_lib_requires
+    ["require \"csv\"", "require 'tzinfo'", "require(\"date\")", "require \"Time\""].each do |snippet|
+      assert_nil @tool.send(:validate_code_safety, snippet), "expected #{snippet} to be allowed"
+    end
+  end
+
+  # require_dependency (Rails autoload helper) is not a `require` and must not
+  # be swept up by the require block.
+  def test_static_analysis_allows_require_dependency
+    assert_nil @tool.send(:validate_code_safety, 'require_dependency "app/models/user"')
+  end
+
+  # Tier 1 hardening: dynamic dispatch to an execution sink by name is
+  # hard-blocked, not merely gated behind confirmation.
+  def test_static_analysis_hard_blocks_dynamic_dispatch_to_sinks
+    [
+      'Object.const_get("Open3").capture2("id")',
+      "Process.send(:spawn, \"echo hi\")",
+      "Kernel.public_send(:system, \"echo hi\")",
+      "obj.__send__(:exec, \"echo hi\")"
+    ].each do |snippet|
+      error = @tool.send(:validate_code_safety, snippet)
+
+      refute_nil error, "expected #{snippet} to be rejected"
+      assert_includes error, "REJECTED"
+    end
+  end
+
+  # Tier 1 hardening: benign dynamic dispatch is untouched by the hard block
+  # (it may still hit the confirmation tier, but is not statically rejected).
+  def test_static_analysis_allows_benign_send
+    assert_nil @tool.send(:validate_code_safety, "record.send(:name)")
+    assert_nil @tool.send(:validate_code_safety, 'model.const_get("VERSION")')
+  end
+
+  # Tier 1 hardening: end-to-end, a PTY payload never reaches execution.
+  def test_pty_payload_is_rejected_end_to_end
+    result = @tool.call(code: "require \"pty\"\nPTY.spawn('/bin/echo', 'pwned')")
+
+    assert_includes result, "REJECTED"
+  end
+
   private
 
   # Runs the generated sandbox script in a plain Ruby subprocess (without
