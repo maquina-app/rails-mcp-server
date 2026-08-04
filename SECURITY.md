@@ -79,4 +79,4 @@ The tools are read-oriented, but this is not enforced by an isolation boundary: 
 
 We thank the following researchers for responsibly disclosing vulnerabilities:
 
-*No vulnerabilities reported yet.*
+- **Pluto Security** — reported a command-execution vulnerability in the `execute_ruby` tool: arbitrary host commands via `PTY.spawn`, escaping the sandbox's pattern denylist. Addressed by hardening in 1.6.1 and by removing the `execute_ruby` tool entirely in 2.0.0.
