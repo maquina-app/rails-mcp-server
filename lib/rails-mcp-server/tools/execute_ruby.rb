@@ -20,8 +20,9 @@ module RailsMcpServer
       - Cannot access files outside the project directory (read-only system data
         such as timezone files under /usr/share/zoneinfo is allowed)
       - Cannot execute shell commands or system calls
-      - Can only `require` a small allowlist of standard-library data helpers
-        (json, set, yaml, csv, digest, ...); require_relative is not permitted
+      - Cannot `require`/`require_relative` additional libraries — Rails and the
+        stdlib it loads (json, yaml, set, date, ...) are already available under
+        `bin/rails runner`, so inspection code does not need to require anything
       - Database writes run inside a transaction that is always rolled back, so
         treat this as read-only for data too (note: DDL may still commit on some
         adapters, and after_commit callbacks do not fire)
@@ -115,27 +116,19 @@ module RailsMcpServer
       /Rails\.application\.credentials/i,
       /Rails\.application\.secrets/i,
 
-      # Load/require that could execute arbitrary code
-      /load\s*[(\s]+[^)]*\$/i,
-      /require\s+[^'"]/i
+      # Load/require. `require` is blocked outright: the code runs under
+      # `bin/rails runner`, so Rails, the app's models/gems, and the stdlib
+      # Rails loads on boot (json, yaml, set, date, ...) are already available
+      # without it. Since every dangerous stdlib escape has to be required
+      # first (`pty` → PTY.spawn, `open3`, `fiddle`/`ffi` → raw libc, `socket`),
+      # refusing all requires removes that whole class of bypass at the source.
+      # require_relative (loads/executes arbitrary project files) is refused in
+      # every form; require is refused for both literal and dynamic targets.
+      /\brequire_relative\b/i,
+      /\brequire\b\s*(?:\(\s*)?['"]/,
+      /require\s+[^'"]/i,
+      /load\s*[(\s]+[^)]*\$/i
     ].freeze
-
-    # Only these libraries may be `require`d from executed code. Everything
-    # else is rejected: the code runs under `bin/rails runner`, so Rails and
-    # the app's own gems are already loaded and inspection rarely needs to
-    # require anything. An allowlist closes stdlib escalation paths the pattern
-    # denylist cannot enumerate — e.g. `require "pty"` (PTY.spawn),
-    # `require "fiddle"`/`"ffi"` (raw libc calls), `require "open3"`. Matched
-    # case-insensitively; a trailing ".rb" is ignored.
-    REQUIRE_ALLOWLIST = %w[
-      json set date time bigdecimal ostruct pp yaml csv
-      digest securerandom base64 abbrev
-    ].freeze
-
-    # Extracts require/require_relative statements with a *literal* target in
-    # any of `require "x"`, `require'x'`, `require("x")` forms. Dynamic targets
-    # (no literal) are already rejected by the /require\s+[^'"]/ pattern above.
-    REQUIRE_STATEMENT = /\b(require|require_relative)\b\s*(?:\(\s*)?(['"])([^'"]+)\2/
 
     # Dual-use constructs that are NOT hard-blocked (they have legitimate
     # read-only uses) but can defeat the static safety scan, so running them
@@ -224,25 +217,6 @@ module RailsMcpServer
         if code.match?(pattern)
           return "REJECTED: Code contains forbidden pattern (#{pattern.source.split("\\").first}...). " \
                  "This tool only allows a restricted set of inspection operations."
-        end
-      end
-
-      validate_requires(code)
-    end
-
-    # Rejects `require_relative` (which loads and executes arbitrary project
-    # Ruby) and any `require` of a library outside REQUIRE_ALLOWLIST. Returns an
-    # error string, or nil when every require statement is permitted.
-    def validate_requires(code)
-      code.scan(REQUIRE_STATEMENT).each do |method, _quote, lib|
-        if method == "require_relative"
-          return "REJECTED: require_relative is not permitted; it loads and executes arbitrary project files."
-        end
-
-        normalized = lib.downcase.sub(/\.rb\z/, "")
-        unless REQUIRE_ALLOWLIST.include?(normalized)
-          return "REJECTED: require of '#{lib}' is not permitted. " \
-                 "Only these libraries may be required: #{REQUIRE_ALLOWLIST.join(", ")}."
         end
       end
       nil

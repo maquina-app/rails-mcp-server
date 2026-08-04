@@ -233,31 +233,30 @@ class ExecuteRubyTest < Minitest::Test
     end
   end
 
-  # Tier 1 hardening: only allowlisted libraries may be required; dangerous
-  # stdlib (pty, open3, socket, fiddle) and everything else is rejected.
-  def test_static_analysis_enforces_require_allowlist
-    %w[pty open3 socket fiddle ffi net/http fileutils].each do |lib|
-      error = @tool.send(:validate_code_safety, "require #{lib.inspect}")
+  # Tier 1 hardening: require is blocked outright. bin/rails runner has already
+  # booted Rails and the stdlib it loads, so inspection code never needs it,
+  # and every dangerous stdlib escape has to be required first. Covers literal
+  # (quoted / parenthesized), dynamic, and require_relative forms.
+  def test_static_analysis_rejects_all_requires
+    [
+      'require "pty"',
+      "require 'open3'",
+      'require("socket")',
+      'require "json"',
+      "require SOME_CONST",
+      'require_relative "../../config/environment"'
+    ].each do |snippet|
+      error = @tool.send(:validate_code_safety, snippet)
 
-      refute_nil error, "expected require #{lib.inspect} to be rejected"
+      refute_nil error, "expected #{snippet} to be rejected"
       assert_includes error, "REJECTED"
     end
   end
 
-  # Tier 1 hardening: allowlisted requires still pass, in every literal form.
-  def test_static_analysis_allows_safe_requires
-    ["require \"json\"", "require 'set'", "require(\"csv\")", "require \"YAML\""].each do |snippet|
-      assert_nil @tool.send(:validate_code_safety, snippet), "expected #{snippet} to be allowed"
-    end
-  end
-
-  # Tier 1 hardening: require_relative loads and executes arbitrary project
-  # files and is never permitted.
-  def test_static_analysis_rejects_require_relative
-    error = @tool.send(:validate_code_safety, 'require_relative "../../config/environment"')
-
-    refute_nil error
-    assert_includes error, "require_relative"
+  # require_dependency (Rails autoload helper) is not a `require` and must not
+  # be swept up by the require block.
+  def test_static_analysis_allows_require_dependency
+    assert_nil @tool.send(:validate_code_safety, 'require_dependency "app/models/user"')
   end
 
   # Tier 1 hardening: dynamic dispatch to an execution sink by name is
