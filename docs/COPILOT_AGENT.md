@@ -29,7 +29,7 @@ Create `.github/copilot/mcp.json` in your repository:
       "type": "local",
       "command": "rails-mcp-server",
       "args": ["--single-project"],
-      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+      "tools": ["switch_project", "search_tools", "execute_tool"]
     }
   }
 }
@@ -133,7 +133,6 @@ GitHub Copilot Agent only supports MCP **tools**. The following are available:
 | `switch_project` | Change active project (optional in single-project mode) |
 | `search_tools` | Discover available analyzers |
 | `execute_tool` | Invoke internal analyzers |
-| `execute_ruby` | Run Ruby code in the project context |
 
 ### Internal Analyzers (via `execute_tool`)
 
@@ -171,7 +170,7 @@ The `load_guide` analyzer requires guides to be downloaded. To include guides:
 
 ### Network Restrictions
 
-GitHub Copilot Agent runs in a sandboxed environment with firewall restrictions. The MCP server is used here to inspect the repository and runs with the permissions of that agent environment; note that `execute_ruby` executes real Ruby with those permissions and is not itself an isolation boundary (see the [security notes](../README.md#4-execute_ruby)).
+GitHub Copilot Agent runs in a sandboxed environment with firewall restrictions. The MCP server is used here to inspect the repository and runs with the permissions of that agent environment. It exposes a fixed set of introspection tools and does not execute caller-supplied Ruby; the tools that boot the app run the project's environment, so use it with repositories you trust.
 
 ## Troubleshooting
 
@@ -205,7 +204,7 @@ Here's a complete example for a typical Rails project:
       "type": "local",
       "command": "rails-mcp-server",
       "args": ["--single-project"],
-      "tools": ["switch_project", "search_tools", "execute_tool", "execute_ruby"]
+      "tools": ["switch_project", "search_tools", "execute_tool"]
     }
   }
 }
