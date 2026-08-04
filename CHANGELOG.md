@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-04
+
 ### Security
 
 - **`execute_ruby` process-execution hardening**: Closed a command-execution path and tightened the static filter.
@@ -367,6 +369,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v1.6.1** (2026-08-04): `execute_ruby` process-execution hardening (blocks the `require "pty"` → `PTY.spawn` command-execution path, restricts `require` to a data-lib allowlist, hard-blocks dynamic dispatch to execution sinks) and a ReDoS fix in the static scan
 - **v1.6.0** (2026-08-03): Sandbox hardening for `execute_ruby`, version-manager Ruby resolution, namespaced model resolution, dependency + security updates (drops Ruby 3.2)
 - **v1.5.1** (2026-03-04): Relaxed dependency version constraints for better compatibility
 - **v1.4.0** (2025-12-10): Context-efficient architecture with progressive tool discovery (67% token reduction)
