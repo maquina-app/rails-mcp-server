@@ -82,8 +82,8 @@ module RailsMcpServer
       # confirmation tier below; only a dangerous literal target is rejected
       # outright, so `record.send(:name)` still works while
       # `Process.send(:spawn, ...)` or `const_get("Open3")` do not.
-      /\b(?:public_send|__send__|send)\s*\(?\s*[:'"](?:system|exec|spawn|fork|eval|popen|syscall|`)/i,
-      /\bconst_get\s*\(?\s*['"](?:Open3|Process|PTY|Kernel|Socket|Fiddle|FFI|Binding|ObjectSpace|TCPSocket|UDPSocket)\b/i,
+      /\b(?:public_send|__send__|send)\s*(?:\(\s*)?[:'"](?:system|exec|spawn|fork|eval|popen|syscall|`)/i,
+      /\bconst_get\s*(?:\(\s*)?['"](?:Open3|Process|PTY|Kernel|Socket|Fiddle|FFI|Binding|ObjectSpace|TCPSocket|UDPSocket)\b/i,
 
       # Network access
       /Net::(HTTP|FTP|SMTP)/i,
@@ -135,7 +135,7 @@ module RailsMcpServer
     # Extracts require/require_relative statements with a *literal* target in
     # any of `require "x"`, `require'x'`, `require("x")` forms. Dynamic targets
     # (no literal) are already rejected by the /require\s+[^'"]/ pattern above.
-    REQUIRE_STATEMENT = /\b(require|require_relative)\b\s*\(?\s*(['"])([^'"]+)\2/
+    REQUIRE_STATEMENT = /\b(require|require_relative)\b\s*(?:\(\s*)?(['"])([^'"]+)\2/
 
     # Dual-use constructs that are NOT hard-blocked (they have legitimate
     # read-only uses) but can defeat the static safety scan, so running them
